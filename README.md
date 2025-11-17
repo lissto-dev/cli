@@ -72,27 +72,6 @@ Your AI can now manage environments, blueprints, stacks, view logs, and more thr
 
 **Learn more:** See [MCP.md](./MCP.md) for detailed setup and capabilities.
 
-## Global Flags
-
-- `--output, -o`: Output format (json, yaml, wide)
-- `--context`: Override current context
-- `--env`: Override current environment
-
-## Available Commands
-
-- `login` - Authenticate with Lissto API
-- `context` - Manage API contexts
-- `env` - Manage environments
-- `blueprint` - Manage blueprints
-- `stack` - Manage stacks
-- `status` - View stack status
-- `logs` - View pod logs
-- `update` - Update stacks
-- `admin` - Admin operations (requires admin role)
-- `mcp` - Start MCP server for AI assistants
-
-Run `lissto <command> --help` for detailed information on each command.
-
 ## Documentation
 
 - **[MCP Integration](./MCP.md)** - Model Context Protocol setup for AI assistants
