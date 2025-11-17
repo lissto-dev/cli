@@ -1,4 +1,4 @@
-.PHONY: build install clean test test-verbose test-mcp test-coverage run
+.PHONY: build install clean test test-verbose test-mcp test-coverage run release
 
 # Binary name
 BINARY_DIR=bin
@@ -49,6 +49,10 @@ build-all:
 	GOOS=linux GOARCH=arm64 go build -o build/$(BINARY)-linux-arm64 .
 	GOOS=windows GOARCH=amd64 go build -o build/$(BINARY)-windows-amd64.exe .
 
+# Test release process locally (requires goreleaser)
+release:
+	goreleaser release --snapshot --clean
+
 # Format code
 fmt:
 	go fmt ./...
@@ -76,6 +80,7 @@ help:
 	@echo "  make test-coverage  - Run tests with coverage report"
 	@echo "  make run            - Run the CLI in development mode"
 	@echo "  make build-all      - Build for multiple platforms"
+	@echo "  make release        - Test release process locally (requires goreleaser)"
 	@echo "  make fmt            - Format code"
 	@echo "  make lint           - Run linter"
 	@echo "  make deps           - Download and tidy dependencies"

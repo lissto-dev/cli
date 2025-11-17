@@ -1,0 +1,107 @@
+# GoReleaser configuration for lissto CLI
+# Visit https://goreleaser.com for documentation
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go mod download
+
+builds:
+  - id: lissto
+    main: ./main.go
+    binary: lissto
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/lissto-dev/cli/cmd.Version={{.Version}}
+      - -X github.com/lissto-dev/cli/cmd.Commit={{.Commit}}
+      - -X github.com/lissto-dev/cli/cmd.Date={{.Date}}
+
+archives:
+  - id: lissto
+    format: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - MCP.md
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+      - '^ci:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+brews:
+  - name: lissto
+    repository:
+      owner: lissto-dev
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    folder: Formula
+    homepage: "https://github.com/lissto-dev/cli"
+    description: "Lissto CLI - Deploy and manage your stacks on Kubernetes"
+    license: "MIT"
+    test: |
+      system "#{bin}/lissto", "--version"
+    install: |
+      bin.install "lissto"
+
+release:
+  github:
+    owner: lissto-dev
+    name: cli
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Lissto CLI {{ .Tag }}
+
+    Install with Homebrew:
+    ```bash
+    brew install lissto-dev/tap/lissto
+    ```
+
+    Or download the binary for your platform below.
+
