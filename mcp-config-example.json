@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lissto": {
+      "command": "/usr/local/bin/lissto",
+      "args": ["mcp"]
+    }
+  }
+}
+
