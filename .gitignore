@@ -4,13 +4,15 @@ lissto
 *.dll
 *.so
 *.dylib
-bin/
+
 
 # Test binary
 *.test
 
-# Output of go build
+# build & release files
 /build/
+dist/
+bin/
 
 # Dependency directories
 vendor/

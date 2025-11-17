@@ -21,7 +21,8 @@ Download pre-built binaries from the [releases page](https://github.com/lissto-d
 Connect to your Lissto API server:
 
 ```bash
-lissto login (interactive)
+# Login (interactive)
+lissto login
 ```
 
 ### 2. Common Commands

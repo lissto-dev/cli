@@ -79,7 +79,7 @@ brews:
       owner: lissto-dev
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    folder: Formula
+    directory: Formula
     homepage: "https://github.com/lissto-dev/cli"
     description: "Lissto CLI - Deploy and manage your stacks on Kubernetes"
     license: "MIT"
