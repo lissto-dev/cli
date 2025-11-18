@@ -31,8 +31,10 @@ builds:
       - -X github.com/lissto-dev/cli/cmd.Date={{.Date}}
 
 archives:
-  - id: lissto
-    format: tar.gz
+  - id: default
+    builds:
+      - lissto
+    rlcp: true
     name_template: >-
       {{ .ProjectName }}_
       {{- .Version }}_
@@ -41,12 +43,11 @@ archives:
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
-    format_overrides:
-      - goos: windows
-        format: zip
     files:
       - README.md
       - MCP.md
+    meta: true
+    wrap_in_directory: false
 
 checksum:
   name_template: 'checksums.txt'
