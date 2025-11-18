@@ -39,7 +39,7 @@ including blueprints, stacks, and environments.`,
 			fmt.Printf("  built at: %s\n", Date)
 			return
 		}
-		cmd.Help()
+		_ = cmd.Help()
 	},
 }
 

@@ -144,7 +144,7 @@ var _ = Describe("MCP Server", func() {
 				stdin.Write(requestJSON)
 				stdin.Write([]byte("\n"))
 
-				go server.Run()
+				go func() { _ = server.Run() }()
 
 				Eventually(stdout.Len).Should(BeNumerically(">", 0))
 
@@ -173,7 +173,7 @@ var _ = Describe("MCP Server", func() {
 				stdin.Write(requestJSON)
 				stdin.Write([]byte("\n"))
 
-				go server.Run()
+				go func() { _ = server.Run() }()
 
 				Eventually(stdout.Len).Should(BeNumerically(">", 0))
 
@@ -192,7 +192,7 @@ var _ = Describe("MCP Server", func() {
 			It("should return ParseError", func() {
 				stdin.Write([]byte("not valid json\n"))
 
-				go server.Run()
+				go func() { _ = server.Run() }()
 
 				Eventually(stdout.Len).Should(BeNumerically(">", 0))
 
@@ -222,7 +222,7 @@ var _ = Describe("MCP Server", func() {
 				stdin.Write(requestJSON)
 				stdin.Write([]byte("\n"))
 
-				go server.Run()
+				go func() { _ = server.Run() }()
 
 				// Give it a moment to process
 				Consistently(stdout.Len, "500ms").Should(Equal(0))
@@ -254,7 +254,7 @@ var _ = Describe("MCP Server", func() {
 			stdin.Write(req2JSON)
 			stdin.Write([]byte("\n"))
 
-			go server.Run()
+			go func() { _ = server.Run() }()
 
 			// Should receive two responses
 			Eventually(func() int {

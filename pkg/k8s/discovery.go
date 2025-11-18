@@ -267,31 +267,6 @@ func findAvailablePort(startPort int) int {
 	return 0
 }
 
-// verifyEndpoint checks if an endpoint is reachable
-func (c *Client) verifyEndpoint(url string) error {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	// Try to reach the health endpoint or root
-	resp, err := client.Get(url + "/health")
-	if err != nil {
-		// Try root if health fails
-		resp, err = client.Get(url)
-		if err != nil {
-			return fmt.Errorf("endpoint not reachable: %w", err)
-		}
-	}
-	defer resp.Body.Close()
-
-	// Any 2xx, 3xx, or even 401/403 means the endpoint exists
-	if resp.StatusCode < 500 {
-		return nil
-	}
-
-	return fmt.Errorf("endpoint returned status %d", resp.StatusCode)
-}
-
 // GetService gets a service by namespace and name
 func (c *Client) GetService(ctx context.Context, namespace, name string) (*corev1.Service, error) {
 	service, err := c.clientset.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})

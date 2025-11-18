@@ -291,7 +291,7 @@ func (s *Server) sendResponse(response *JSONRPCResponse) {
 	// Flush stdout to ensure response is sent immediately
 	// This is critical for MCP clients like Cursor that maintain persistent connections
 	if f, ok := s.stdout.(*os.File); ok {
-		f.Sync()
+		_ = f.Sync()
 	}
 
 	s.log("Response sent successfully")

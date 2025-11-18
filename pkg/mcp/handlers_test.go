@@ -2,27 +2,9 @@ package mcp_test
 
 import (
 	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 )
 
-// Mock logger for testing
-type mockLogger struct {
-	logs []string
-}
-
-func (m *mockLogger) log(format string, args ...interface{}) {
-	// Store log messages for verification if needed
-	m.logs = append(m.logs, format)
-}
-
 var _ = Describe("MCP Handlers", func() {
-	var logger *mockLogger
-
-	BeforeEach(func() {
-		logger = &mockLogger{
-			logs: make([]string, 0),
-		}
-	})
 
 	Describe("Helper Functions", func() {
 		Context("getString", func() {
@@ -134,15 +116,6 @@ var _ = Describe("MCP Handlers", func() {
 					Skip("Requires lissto login context and k8s access")
 				})
 			})
-		})
-	})
-
-	Describe("Logger Integration", func() {
-		It("should log handler execution", func() {
-			// Verify that handlers accept logger parameter
-			// and would log if a real implementation was called
-			Expect(logger).NotTo(BeNil())
-			Expect(logger.logs).To(BeEmpty())
 		})
 	})
 

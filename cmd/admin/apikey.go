@@ -23,7 +23,7 @@ var apikeyCmd = &cobra.Command{
 func init() {
 	apikeyCmd.Flags().StringVar(&apikeyName, "name", "", "User name for the API key (required)")
 	apikeyCmd.Flags().StringVar(&apikeyRole, "role", "user", "Role for the API key (user, deploy)")
-	apikeyCmd.MarkFlagRequired("name")
+	_ = apikeyCmd.MarkFlagRequired("name")
 }
 
 func runCreateAPIKey(cmd *cobra.Command, args []string) error {
@@ -50,3 +50,4 @@ func runCreateAPIKey(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+

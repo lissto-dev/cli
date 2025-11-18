@@ -95,16 +95,6 @@ func getString(args map[string]interface{}, key string, defaultVal string) strin
 	return defaultVal
 }
 
-// Helper to get bool from args
-func getBool(args map[string]interface{}, key string, defaultVal bool) bool {
-	if val, ok := args[key]; ok {
-		if b, ok := val.(bool); ok {
-			return b
-		}
-	}
-	return defaultVal
-}
-
 // Helper to get int from args
 func getInt(args map[string]interface{}, key string, defaultVal int) int {
 	if val, ok := args[key]; ok {
