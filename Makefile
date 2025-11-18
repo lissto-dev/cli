@@ -1,4 +1,4 @@
-.PHONY: build install clean test test-verbose test-mcp test-coverage run release
+.PHONY: build install clean test test-verbose test-mcp test-coverage test-ci run release vet fmt lint deps ci
 
 # Binary name
 BINARY_DIR=bin
@@ -17,24 +17,29 @@ install:
 clean:
 	rm -f $(BINARY)
 	rm -rf $(BINARY_DIR)/
+	rm -f coverage.out coverage.html
 
 # Run tests
 test:
-	go test -v ./...
+	go run github.com/onsi/ginkgo/v2/ginkgo -r --randomize-all
 
 # Run tests with verbose Ginkgo output
 test-verbose:
-	go test -v -ginkgo.v ./...
+	go run github.com/onsi/ginkgo/v2/ginkgo -r -v --randomize-all
 
 # Run only MCP tests
 test-mcp:
-	go test -v ./pkg/mcp/...
+	go run github.com/onsi/ginkgo/v2/ginkgo -r -v ./pkg/mcp/
 
-# Run tests with coverage
+# Run tests with coverage (local development)
 test-coverage:
-	go test -v -coverprofile=coverage.out ./...
+	go run github.com/onsi/ginkgo/v2/ginkgo -r --cover --coverprofile=coverage.out
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
+
+# Run tests for CI (with race detection and coverage using Ginkgo)
+test-ci:
+	go run github.com/onsi/ginkgo/v2/ginkgo -r --race --cover --coverprofile=coverage.out --covermode=atomic --randomize-all --fail-fast
 
 # Run the CLI (for development)
 run:
@@ -53,6 +58,10 @@ build-all:
 release:
 	goreleaser release --snapshot --clean
 
+# Run go vet
+vet:
+	go vet ./...
+
 # Format code
 fmt:
 	go fmt ./...
@@ -64,7 +73,16 @@ lint:
 # Download dependencies
 deps:
 	go mod download
+	go mod verify
+
+# Tidy dependencies
+tidy:
 	go mod tidy
+
+# Run all CI checks locally
+ci: deps vet test-ci lint build
+	@echo ""
+	@echo "✅ All CI checks passed!"
 
 # Help
 help:
@@ -77,11 +95,15 @@ help:
 	@echo "  make test           - Run all tests"
 	@echo "  make test-verbose   - Run tests with verbose Ginkgo output"
 	@echo "  make test-mcp       - Run only MCP tests"
-	@echo "  make test-coverage  - Run tests with coverage report"
+	@echo "  make test-coverage  - Run tests with coverage report (HTML)"
+	@echo "  make test-ci        - Run tests with race detection and coverage (CI)"
 	@echo "  make run            - Run the CLI in development mode"
 	@echo "  make build-all      - Build for multiple platforms"
 	@echo "  make release        - Test release process locally (requires goreleaser)"
+	@echo "  make vet            - Run go vet"
 	@echo "  make fmt            - Format code"
 	@echo "  make lint           - Run linter"
-	@echo "  make deps           - Download and tidy dependencies"
+	@echo "  make deps           - Download and verify dependencies"
+	@echo "  make tidy           - Tidy dependencies"
+	@echo "  make ci             - Run all CI checks locally"
 
