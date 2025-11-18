@@ -62,10 +62,4 @@ jobs:
         with:
           version: latest
           args: --timeout=5m
-      
-      # Alternative: use Makefile target if you want to enforce local lint config
-      # - name: Install golangci-lint
-      #   run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
-      # - name: Run linter
-      #   run: make lint
 
