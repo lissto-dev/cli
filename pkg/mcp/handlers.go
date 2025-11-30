@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/lissto-dev/cli/pkg/client"
 	"github.com/lissto-dev/cli/pkg/config"
@@ -53,6 +54,30 @@ func ExecuteTool(name string, args map[string]interface{}, logger Logger) (inter
 	// Admin tools
 	case "lissto_admin_apikey_create":
 		return handleAdminAPIKeyCreate(args, logger)
+
+	// Variable tools
+	case "lissto_variable_list":
+		return handleVariableList(args, logger)
+	case "lissto_variable_get":
+		return handleVariableGet(args, logger)
+	case "lissto_variable_create":
+		return handleVariableCreate(args, logger)
+	case "lissto_variable_update":
+		return handleVariableUpdate(args, logger)
+	case "lissto_variable_delete":
+		return handleVariableDelete(args, logger)
+
+	// Secret tools
+	case "lissto_secret_list":
+		return handleSecretList(args, logger)
+	case "lissto_secret_get":
+		return handleSecretGet(args, logger)
+	case "lissto_secret_create":
+		return handleSecretCreate(args, logger)
+	case "lissto_secret_set":
+		return handleSecretSet(args, logger)
+	case "lissto_secret_delete":
+		return handleSecretDelete(args, logger)
 
 	// Status and logs tools
 	case "lissto_status":
@@ -419,6 +444,407 @@ func handleAdminAPIKeyCreate(args map[string]interface{}, logger Logger) (interf
 		"name":    result.Name,
 		"role":    result.Role,
 		"message": "API key created successfully. IMPORTANT: Save this key securely, it cannot be retrieved later.",
+	}, nil
+}
+
+// Variable handlers
+func handleVariableList(args map[string]interface{}, logger Logger) (interface{}, error) {
+	logger.log("→ handleVariableList: Getting API client")
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	variables, err := apiClient.ListVariables()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list variables: %w", err)
+	}
+
+	return map[string]interface{}{
+		"variables": variables,
+		"count":     len(variables),
+	}, nil
+}
+
+func handleVariableGet(args map[string]interface{}, logger Logger) (interface{}, error) {
+	name := getString(args, "name", "")
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	// Default to env scope (API default)
+	variable, err := apiClient.GetVariable(name, "", "", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get variable: %w", err)
+	}
+
+	return variable, nil
+}
+
+func handleVariableCreate(args map[string]interface{}, logger Logger) (interface{}, error) {
+	scope := getString(args, "scope", "env")
+	env := getString(args, "env", "")
+	repository := getString(args, "repository", "")
+
+	// Default env to current env from config if scope is "env"
+	if scope == "env" && env == "" {
+		cfg, err := config.LoadConfig()
+		if err == nil {
+			env = cfg.CurrentEnv
+		}
+		if env == "" {
+			return nil, fmt.Errorf("env is required for scope=env. Set with --env or run 'lissto env use <env>'")
+		}
+	}
+
+	// Parse data from args
+	data := make(map[string]string)
+	if dataArg, ok := args["data"]; ok {
+		if dataMap, ok := dataArg.(map[string]interface{}); ok {
+			for k, v := range dataMap {
+				if str, ok := v.(string); ok {
+					data[k] = str
+				}
+			}
+		}
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate name based on scope
+	name := generateVariableNameMCP(scope, env, repository)
+
+	// Try to create
+	req := &client.CreateVariableRequest{
+		Name:       name,
+		Scope:      scope,
+		Env:        env,
+		Repository: repository,
+		Data:       data,
+	}
+
+	variable, err := apiClient.CreateVariable(req)
+	if err != nil {
+		// Check if it's a conflict error - try to merge
+		errStr := err.Error()
+		if strings.Contains(errStr, "409") || strings.Contains(strings.ToLower(errStr), "already exists") {
+			// Get existing variable (pass scope for correct namespace resolution)
+			existing, err := apiClient.GetVariable(name, scope, env, repository)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get existing variable: %w", err)
+			}
+
+			// Check for conflicting keys
+			conflicts := []string{}
+			for key, newValue := range data {
+				if existingValue, exists := existing.Data[key]; exists && existingValue != newValue {
+					conflicts = append(conflicts, fmt.Sprintf("%s (existing: %s, new: %s)", key, existingValue, newValue))
+				}
+			}
+
+			if len(conflicts) > 0 {
+				return nil, fmt.Errorf("key conflicts detected: %s", strings.Join(conflicts, ", "))
+			}
+
+			// Merge data
+			mergedData := make(map[string]string)
+			for k, v := range existing.Data {
+				mergedData[k] = v
+			}
+			for k, v := range data {
+				mergedData[k] = v
+			}
+
+			// Update
+			updateReq := &client.UpdateVariableRequest{
+				Data: mergedData,
+			}
+			variable, err = apiClient.UpdateVariable(name, scope, env, repository, updateReq)
+			if err != nil {
+				return nil, fmt.Errorf("failed to merge variable: %w", err)
+			}
+
+			return map[string]interface{}{
+				"variable": variable,
+				"message":  fmt.Sprintf("Variable '%s' updated with new keys (merged %d keys)", variable.Name, len(data)),
+			}, nil
+		}
+		return nil, fmt.Errorf("failed to create variable: %w", err)
+	}
+
+	return map[string]interface{}{
+		"variable": variable,
+		"message":  fmt.Sprintf("Variable '%s' created successfully", variable.Name),
+	}, nil
+}
+
+func generateVariableNameMCP(scope, env, repository string) string {
+	switch scope {
+	case "global":
+		return "global"
+	case "repo":
+		parts := strings.Split(repository, "/")
+		if len(parts) > 0 {
+			repoName := parts[len(parts)-1]
+			repoName = strings.TrimSuffix(repoName, ".git")
+			return fmt.Sprintf("repo-%s", repoName)
+		}
+		return "repo"
+	default:
+		return env
+	}
+}
+
+func handleVariableUpdate(args map[string]interface{}, logger Logger) (interface{}, error) {
+	name := getString(args, "name", "")
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	// Parse data from args
+	data := make(map[string]string)
+	if dataArg, ok := args["data"]; ok {
+		if dataMap, ok := dataArg.(map[string]interface{}); ok {
+			for k, v := range dataMap {
+				if str, ok := v.(string); ok {
+					data[k] = str
+				}
+			}
+		}
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	req := &client.UpdateVariableRequest{
+		Data: data,
+	}
+
+	// Use default scope (env)
+	variable, err := apiClient.UpdateVariable(name, "", "", "", req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update variable: %w", err)
+	}
+
+	return map[string]interface{}{
+		"variable": variable,
+		"message":  fmt.Sprintf("Variable '%s' updated successfully", name),
+	}, nil
+}
+
+func handleVariableDelete(args map[string]interface{}, logger Logger) (interface{}, error) {
+	name := getString(args, "name", "")
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	// Use default scope (env)
+	if err := apiClient.DeleteVariable(name, "", "", ""); err != nil {
+		return nil, fmt.Errorf("failed to delete variable: %w", err)
+	}
+
+	return map[string]interface{}{
+		"message": fmt.Sprintf("Variable '%s' deleted successfully", name),
+	}, nil
+}
+
+// Secret handlers
+func handleSecretList(args map[string]interface{}, logger Logger) (interface{}, error) {
+	logger.log("→ handleSecretList: Getting API client")
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	secrets, err := apiClient.ListSecrets()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list secrets: %w", err)
+	}
+
+	return map[string]interface{}{
+		"secrets": secrets,
+		"count":   len(secrets),
+	}, nil
+}
+
+func handleSecretGet(args map[string]interface{}, logger Logger) (interface{}, error) {
+	name := getString(args, "name", "")
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	// Default to env scope (API default)
+	secret, err := apiClient.GetSecret(name, "", "", "")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret: %w", err)
+	}
+
+	return secret, nil
+}
+
+func handleSecretCreate(args map[string]interface{}, logger Logger) (interface{}, error) {
+	scope := getString(args, "scope", "env")
+	env := getString(args, "env", "")
+	repository := getString(args, "repository", "")
+
+	// Default env to current env from config if scope is "env"
+	if scope == "env" && env == "" {
+		cfg, err := config.LoadConfig()
+		if err == nil {
+			env = cfg.CurrentEnv
+		}
+		if env == "" {
+			return nil, fmt.Errorf("env is required for scope=env. Set with --env or run 'lissto env use <env>'")
+		}
+	}
+
+	// Parse secrets from args
+	secrets := make(map[string]string)
+	if secretsArg, ok := args["secrets"]; ok {
+		if secretsMap, ok := secretsArg.(map[string]interface{}); ok {
+			for k, v := range secretsMap {
+				if str, ok := v.(string); ok {
+					secrets[k] = str
+				}
+			}
+		}
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	// Generate name based on scope
+	name := generateSecretNameMCP(scope, env, repository)
+
+	// Try to create
+	req := &client.CreateSecretRequest{
+		Name:       name,
+		Scope:      scope,
+		Env:        env,
+		Repository: repository,
+		Secrets:    secrets,
+	}
+
+	secret, err := apiClient.CreateSecret(req)
+	if err != nil {
+		// Check if it's a conflict error - DO NOT auto-update (irreversible)
+		errStr := err.Error()
+		if strings.Contains(errStr, "409") || strings.Contains(strings.ToLower(errStr), "already exists") {
+			// Get existing secret to show what exists (pass scope for correct namespace resolution)
+			existing, getErr := apiClient.GetSecret(name, scope, env, repository)
+			if getErr != nil {
+				return nil, fmt.Errorf("secret '%s' already exists but failed to retrieve details: %w", name, getErr)
+			}
+
+			// Reject and tell user to use explicit set command
+			return nil, fmt.Errorf("secret '%s' already exists with keys: %v. Cannot auto-merge secrets (irreversible operation). To add/update keys, explicitly use lissto_secret_set with name='%s' and the keys you want to add/update",
+				name, existing.Keys, name)
+		}
+		return nil, fmt.Errorf("failed to create secret: %w", err)
+	}
+
+	return map[string]interface{}{
+		"secret":  secret,
+		"message": fmt.Sprintf("Secret '%s' created successfully", secret.Name),
+	}, nil
+}
+
+func generateSecretNameMCP(scope, env, repository string) string {
+	switch scope {
+	case "global":
+		return "global"
+	case "repo":
+		parts := strings.Split(repository, "/")
+		if len(parts) > 0 {
+			repoName := parts[len(parts)-1]
+			repoName = strings.TrimSuffix(repoName, ".git")
+			return fmt.Sprintf("repo-%s", repoName)
+		}
+		return "repo"
+	default:
+		return env
+	}
+}
+
+func handleSecretSet(args map[string]interface{}, logger Logger) (interface{}, error) {
+	name := getString(args, "name", "")
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	// Parse secrets from args
+	secrets := make(map[string]string)
+	if secretsArg, ok := args["secrets"]; ok {
+		if secretsMap, ok := secretsArg.(map[string]interface{}); ok {
+			for k, v := range secretsMap {
+				if str, ok := v.(string); ok {
+					secrets[k] = str
+				}
+			}
+		}
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	req := &client.SetSecretRequest{
+		Secrets: secrets,
+	}
+
+	// Use default scope (env)
+	secret, err := apiClient.UpdateSecret(name, "", "", "", req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to set secrets: %w", err)
+	}
+
+	return map[string]interface{}{
+		"secret":  secret,
+		"message": fmt.Sprintf("Secret '%s' updated successfully", name),
+	}, nil
+}
+
+func handleSecretDelete(args map[string]interface{}, logger Logger) (interface{}, error) {
+	name := getString(args, "name", "")
+	if name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+
+	apiClient, err := getAPIClient()
+	if err != nil {
+		return nil, err
+	}
+
+	// Use default scope (env)
+	if err := apiClient.DeleteSecret(name, "", "", ""); err != nil {
+		return nil, fmt.Errorf("failed to delete secret: %w", err)
+	}
+
+	return map[string]interface{}{
+		"message": fmt.Sprintf("Secret '%s' deleted successfully", name),
 	}, nil
 }
 

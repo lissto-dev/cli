@@ -3,6 +3,7 @@ package blueprint
 import (
 	"fmt"
 
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +18,7 @@ var deleteCmd = &cobra.Command{
 func runDelete(cmd *cobra.Command, args []string) error {
 	blueprintName := args[0]
 
-	apiClient, err := getAPIClient()
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
 		return err
 	}

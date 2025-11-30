@@ -3,6 +3,7 @@ package env
 import (
 	"fmt"
 
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +17,7 @@ var createCmd = &cobra.Command{
 func runCreate(cmd *cobra.Command, args []string) error {
 	envName := args[0]
 
-	apiClient, err := getAPIClient()
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
 		return err
 	}
@@ -31,4 +32,3 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-

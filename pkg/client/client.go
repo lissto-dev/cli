@@ -47,9 +47,9 @@ func NewClientWithAPIID(apiURL, apiKey, apiID string) *Client {
 // NewClientFromConfig creates an API client from a saved context
 // It validates the k8s context and discovers the API endpoint with caching and retry logic
 func NewClientFromConfig(ctx *config.Context) (*Client, error) {
-	// Validate k8s context (shows warning if different)
-	if err := config.ValidateAndWarn(ctx); err != nil {
-		// Don't fail on validation errors
+	// Validate k8s context (fail if different to prevent accidental operations)
+	if err := config.ValidateAndFail(ctx); err != nil {
+		return nil, err
 	}
 
 	// Check if we have a cached API URL and ID

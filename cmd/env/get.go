@@ -2,9 +2,8 @@ package env
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/lissto-dev/cli/pkg/output"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +17,7 @@ var getCmd = &cobra.Command{
 func runGet(cmd *cobra.Command, args []string) error {
 	envName := args[0]
 
-	apiClient, err := getAPIClient()
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
 		return err
 	}
@@ -28,17 +27,10 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get environment: %w", err)
 	}
 
-	format := getOutputFormat(cmd)
-	if format == "json" {
-		return output.PrintJSON(os.Stdout, env)
-	} else if format == "yaml" {
-		return output.PrintYAML(os.Stdout, env)
-	}
-
-	// Human-readable format
-	fmt.Printf("Name: %s\n", env.Name)
-	fmt.Printf("ID: %s\n", env.ID)
-
-	return nil
+	return cmdutil.PrintOutput(cmd, env, func() {
+		// Human-readable format
+		fmt.Printf("Name: %s\n", env.Name)
+		fmt.Printf("ID: %s\n", env.ID)
+	})
 }
 

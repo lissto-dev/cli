@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/lissto-dev/cli/pkg/client"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -21,10 +22,6 @@ var createCmd = &cobra.Command{
 	Use:   "create <docker-compose-file>",
 	Short: "Create a new blueprint",
 	Long: `Create a new blueprint from a docker-compose file.
-
-The repository will be automatically inferred from the git repository where the 
-docker-compose file is located (searching upward in the directory tree). If no 
-git repository is found or no remote is configured, the command will fail.
 
 Optional flags:
   --branch          Branch name (for CI/CD workflows)
@@ -105,7 +102,7 @@ func inferRepositoryFromFile(composeFile string) (string, error) {
 func runCreate(cmd *cobra.Command, args []string) error {
 	composeFile := args[0]
 
-	apiClient, err := getAPIClient()
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
 		return err
 	}

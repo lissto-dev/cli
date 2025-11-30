@@ -2,9 +2,8 @@ package blueprint
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/lissto-dev/cli/pkg/output"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -19,7 +18,7 @@ var getCmd = &cobra.Command{
 func runGet(cmd *cobra.Command, args []string) error {
 	blueprintName := args[0]
 
-	apiClient, err := getAPIClient()
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
 		return err
 	}
@@ -29,30 +28,23 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get blueprint: %w", err)
 	}
 
-	format := getOutputFormat(cmd)
-	if format == "json" {
-		return output.PrintJSON(os.Stdout, blueprint)
-	} else if format == "yaml" {
-		return output.PrintYAML(os.Stdout, blueprint)
-	}
+	return cmdutil.PrintOutput(cmd, blueprint, func() {
+		// Human-readable format
+		fmt.Printf("ID: %s\n", blueprint.ID)
+		fmt.Printf("Title: %s\n", blueprint.Title)
 
-	// Human-readable format
-	fmt.Printf("ID: %s\n", blueprint.ID)
-	fmt.Printf("Title: %s\n", blueprint.Title)
-
-	if len(blueprint.Content.Services) > 0 {
-		fmt.Printf("\nServices:\n")
-		for _, service := range blueprint.Content.Services {
-			fmt.Printf("  - %s\n", service)
+		if len(blueprint.Content.Services) > 0 {
+			fmt.Printf("\nServices:\n")
+			for _, service := range blueprint.Content.Services {
+				fmt.Printf("  - %s\n", service)
+			}
 		}
-	}
 
-	if len(blueprint.Content.Infra) > 0 {
-		fmt.Printf("\nInfrastructure:\n")
-		for _, infra := range blueprint.Content.Infra {
-			fmt.Printf("  - %s\n", infra)
+		if len(blueprint.Content.Infra) > 0 {
+			fmt.Printf("\nInfrastructure:\n")
+			for _, infra := range blueprint.Content.Infra {
+				fmt.Printf("  - %s\n", infra)
+			}
 		}
-	}
-
-	return nil
+	})
 }

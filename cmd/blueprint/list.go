@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/lissto-dev/cli/pkg/output"
 	"github.com/spf13/cobra"
 )
@@ -16,7 +17,7 @@ var listCmd = &cobra.Command{
 }
 
 func runList(cmd *cobra.Command, args []string) error {
-	apiClient, err := getAPIClient()
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
 		return err
 	}
@@ -27,21 +28,19 @@ func runList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to list blueprints: %w", err)
 	}
 
-	format := getOutputFormat(cmd)
-	if format == "json" {
-		return output.PrintJSON(os.Stdout, blueprints)
-	} else if format == "yaml" {
-		return output.PrintYAML(os.Stdout, blueprints)
+	if len(blueprints) == 0 {
+		fmt.Println("No blueprints found.")
+		return nil
 	}
 
-	// Table format
-	headers := []string{"ID", "TITLE", "AGE"}
-	var rows [][]string
-	for _, bp := range blueprints {
-		age := output.ExtractBlueprintAge(bp.ID)
-		rows = append(rows, []string{bp.ID, bp.Title, age})
-	}
-	output.PrintTable(os.Stdout, headers, rows)
-
-	return nil
+	return cmdutil.PrintOutput(cmd, blueprints, func() {
+		// Table format
+		headers := []string{"ID", "TITLE", "AGE"}
+		var rows [][]string
+		for _, bp := range blueprints {
+			age := output.ExtractBlueprintAge(bp.ID)
+			rows = append(rows, []string{bp.ID, bp.Title, age})
+		}
+		output.PrintTable(os.Stdout, headers, rows)
+	})
 }

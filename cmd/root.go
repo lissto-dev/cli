@@ -7,7 +7,9 @@ import (
 	"github.com/lissto-dev/cli/cmd/admin"
 	"github.com/lissto-dev/cli/cmd/blueprint"
 	"github.com/lissto-dev/cli/cmd/env"
+	"github.com/lissto-dev/cli/cmd/secret"
 	"github.com/lissto-dev/cli/cmd/stack"
+	"github.com/lissto-dev/cli/cmd/variable"
 	"github.com/spf13/cobra"
 )
 
@@ -64,5 +66,7 @@ func init() {
 	rootCmd.AddCommand(env.EnvCmd)
 	rootCmd.AddCommand(blueprint.BlueprintCmd)
 	rootCmd.AddCommand(stack.StackCmd)
+	rootCmd.AddCommand(variable.VariableCmd)
+	rootCmd.AddCommand(secret.SecretCmd)
 	rootCmd.AddCommand(admin.AdminCmd)
 }

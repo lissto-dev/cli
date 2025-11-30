@@ -244,6 +244,186 @@ func GetAllTools() []Tool {
 			},
 		},
 
+		// Variable tools
+		{
+			Name:        "lissto_variable_list",
+			Description: "List all variables (env and global)",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "lissto_variable_get",
+			Description: "Get details of a specific variable config",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Variable config name or ID",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			Name:        "lissto_variable_create",
+			Description: "Create or update a variable config. Name is auto-generated based on env/scope (e.g., 'staging', 'repo-myapp'). If a config already exists, new keys are merged in. Rejects only if keys conflict (same key, different value). Provide environment variables as key-value pairs in the data field.",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Scope: env, repo, or global (default: env)",
+						"default":     "env",
+						"enum":        []string{"env", "repo", "global"},
+					},
+					"env": map[string]interface{}{
+						"type":        "string",
+						"description": "Environment name (default: current env from context)",
+					},
+					"repository": map[string]interface{}{
+						"type":        "string",
+						"description": "Repository URL (required for scope=repo)",
+					},
+					"data": map[string]interface{}{
+						"type":        "object",
+						"description": "Environment variable key-value pairs (e.g., {\"DB_HOST\": \"localhost\", \"PORT\": \"8080\"})",
+						"additionalProperties": map[string]interface{}{
+							"type": "string",
+						},
+					},
+				},
+				"required": []string{"data"},
+			},
+		},
+		{
+			Name:        "lissto_variable_update",
+			Description: "Update a variable config's data",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Variable config name or ID",
+					},
+					"data": map[string]interface{}{
+						"type":        "object",
+						"description": "New key-value pairs (replaces existing)",
+						"additionalProperties": map[string]interface{}{
+							"type": "string",
+						},
+					},
+				},
+				"required": []string{"name", "data"},
+			},
+		},
+		{
+			Name:        "lissto_variable_delete",
+			Description: "Delete a variable config",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Variable config name or ID",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+
+		// Secret tools
+		{
+			Name:        "lissto_secret_list",
+			Description: "List all secrets (keys only, no values)",
+			InputSchema: map[string]interface{}{
+				"type":       "object",
+				"properties": map[string]interface{}{},
+			},
+		},
+		{
+			Name:        "lissto_secret_get",
+			Description: "Get details of a specific secret config (keys only, no values)",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Secret config name or ID",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+		{
+			Name:        "lissto_secret_create",
+			Description: "Create a new secret config. Name is auto-generated based on env/scope (e.g., 'staging', 'repo-myapp'). If a config already exists, this operation will FAIL. To add/update keys in an existing secret, you must explicitly use lissto_secret_set instead (irreversible operation requires explicit intent).",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"scope": map[string]interface{}{
+						"type":        "string",
+						"description": "Scope: env, repo, or global (default: env)",
+						"default":     "env",
+						"enum":        []string{"env", "repo", "global"},
+					},
+					"env": map[string]interface{}{
+						"type":        "string",
+						"description": "Environment name (default: current env from context)",
+					},
+					"repository": map[string]interface{}{
+						"type":        "string",
+						"description": "Repository URL (required for scope=repo)",
+					},
+					"secrets": map[string]interface{}{
+						"type":        "object",
+						"description": "Secret key-value pairs (e.g., {\"API_KEY\": \"secret123\", \"DB_PASSWORD\": \"pass456\"})",
+						"additionalProperties": map[string]interface{}{
+							"type": "string",
+						},
+					},
+				},
+				"required": []string{"secrets"},
+			},
+		},
+		{
+			Name:        "lissto_secret_set",
+			Description: "Set/update secret values (merges with existing)",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Secret config name or ID",
+					},
+					"secrets": map[string]interface{}{
+						"type":        "object",
+						"description": "Key-value pairs to set",
+						"additionalProperties": map[string]interface{}{
+							"type": "string",
+						},
+					},
+				},
+				"required": []string{"name", "secrets"},
+			},
+		},
+		{
+			Name:        "lissto_secret_delete",
+			Description: "Delete a secret config",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"name": map[string]interface{}{
+						"type":        "string",
+						"description": "Secret config name or ID",
+					},
+				},
+				"required": []string{"name"},
+			},
+		},
+
 		// Status and logs tools
 		{
 			Name:        "lissto_status",

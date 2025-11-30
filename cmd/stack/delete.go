@@ -3,6 +3,7 @@ package stack
 import (
 	"fmt"
 
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +17,7 @@ var deleteCmd = &cobra.Command{
 func runDelete(cmd *cobra.Command, args []string) error {
 	stackName := args[0]
 
-	apiClient, envName, err := getAPIClientAndEnv(cmd)
+	apiClient, envName, err := cmdutil.GetAPIClientAndEnv(cmd)
 	if err != nil {
 		return err
 	}
@@ -29,6 +30,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
+
 
 
 

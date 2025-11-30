@@ -1,23 +1,36 @@
 package output
 
 import (
-	"fmt"
 	"io"
-	"strings"
-	"text/tabwriter"
+
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
 )
 
-// PrintTable prints data in a table format
+// PrintTable prints a table with proper alignment and styling
 func PrintTable(w io.Writer, headers []string, rows [][]string) {
-	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
+	// Create table with no borders and left-aligned headers
+	table := tablewriter.NewTable(w,
+		tablewriter.WithSymbols(tw.NewSymbols(tw.StyleNone)),
+		tablewriter.WithHeaderAlignment(tw.AlignLeft),
+	)
 
-	// Print headers
-	fmt.Fprintln(tw, strings.Join(headers, "\t"))
+	// Set headers
+	headerVals := make([]any, len(headers))
+	for i, h := range headers {
+		headerVals[i] = h
+	}
+	table.Header(headerVals...)
 
-	// Print rows
+	// Append rows
 	for _, row := range rows {
-		fmt.Fprintln(tw, strings.Join(row, "\t"))
+		rowVals := make([]any, len(row))
+		for i, val := range row {
+			rowVals[i] = val
+		}
+		table.Append(rowVals...)
 	}
 
-	tw.Flush()
+	// Render
+	table.Render()
 }

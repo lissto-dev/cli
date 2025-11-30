@@ -3,6 +3,7 @@ package stack
 import (
 	"fmt"
 
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +17,7 @@ var createCmd = &cobra.Command{
 func runCreate(cmd *cobra.Command, args []string) error {
 	blueprintName := args[0]
 
-	apiClient, envName, err := getAPIClientAndEnv(cmd)
+	apiClient, envName, err := cmdutil.GetAPIClientAndEnv(cmd)
 	if err != nil {
 		return err
 	}

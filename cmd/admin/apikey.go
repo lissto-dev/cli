@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/lissto-dev/cli/pkg/client"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -27,7 +28,7 @@ func init() {
 }
 
 func runCreateAPIKey(cmd *cobra.Command, args []string) error {
-	apiClient, err := getAPIClient()
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
 		return err
 	}
@@ -50,4 +51,5 @@ func runCreateAPIKey(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
+
 

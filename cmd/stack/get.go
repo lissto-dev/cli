@@ -2,9 +2,8 @@ package stack
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/lissto-dev/cli/pkg/output"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +17,7 @@ var getCmd = &cobra.Command{
 func runGet(cmd *cobra.Command, args []string) error {
 	stackName := args[0]
 
-	apiClient, envName, err := getAPIClientAndEnv(cmd)
+	apiClient, envName, err := cmdutil.GetAPIClientAndEnv(cmd)
 	if err != nil {
 		return err
 	}
@@ -28,16 +27,9 @@ func runGet(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get stack: %w", err)
 	}
 
-	format := getOutputFormat(cmd)
-	if format == "json" {
-		return output.PrintJSON(os.Stdout, map[string]string{"id": identifier})
-	} else if format == "yaml" {
-		return output.PrintYAML(os.Stdout, map[string]string{"id": identifier})
-	}
-
-	// Human-readable format
-	fmt.Printf("Stack ID: %s\n", identifier)
-
-	return nil
+	return cmdutil.PrintOutput(cmd, map[string]string{"id": identifier}, func() {
+		// Human-readable format
+		fmt.Printf("Stack ID: %s\n", identifier)
+	})
 }
 

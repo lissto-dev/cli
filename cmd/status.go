@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lissto-dev/cli/pkg/client"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/lissto-dev/cli/pkg/config"
 	"github.com/lissto-dev/cli/pkg/k8s"
 	"github.com/lissto-dev/cli/pkg/output"
@@ -87,7 +88,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	// Get output format
-	format := getOutputFormat(cmd)
+	format := cmdutil.GetOutputFormat(cmd)
 
 	// Handle different output formats
 	switch format {
@@ -98,7 +99,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 	case "table":
 		return printTableStatus(envGroups)
 	default:
-		return printPrettyStatus(envGroups)
+		return printPrettyStatus(envGroups, apiClient)
 	}
 }
 
@@ -204,7 +205,7 @@ func printTableStatus(envGroups map[string][]envv1alpha1.Stack) error {
 }
 
 // printPrettyStatus prints detailed format with emojis and pod status
-func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack) error {
+func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *client.Client) error {
 	printer := output.NewPrettyPrinter(os.Stdout)
 
 	// Try to create k8s client (may fail if no kubeconfig)
@@ -276,63 +277,26 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack) error {
 			formatted, timeAgo := output.FormatTimestamp(stack.CreationTimestamp.Time)
 			fmt.Fprintf(os.Stdout, "Created: %s (%s)\n", formatted, timeAgo)
 
-			// Services
+			// Parse services
 			services := status.ParseServiceStatuses(&stack)
-			if len(services) > 0 {
-				printer.PrintNewline()
-				fmt.Fprintf(os.Stdout, "Services:\n")
-
-				// Sort services by name
-				sort.Slice(services, func(i, j int) bool {
-					return services[i].Name < services[j].Name
-				})
-
-				for _, svc := range services {
-					// Check actual pod status if k8s is available
-					serviceSymbol := svc.Symbol
-					if k8sAvailable {
-						pods, err := fetchServicePods(k8sClient, &stack, svc.Name)
-						if err == nil && len(pods) > 0 {
-							// Update service symbol based on actual pod status
-							serviceSymbol = getServiceSymbolFromPods(pods)
-						}
-					}
-
-					printer.PrintSubSection(serviceSymbol, svc.Name)
-
-					// Image
-					if svc.Image != "" {
-						printer.PrintIndentedLine(2, fmt.Sprintf("🐳 %s", svc.Image))
-					}
-
-					// URL
-					if svc.URL != "" {
-						printer.PrintIndentedLine(2, fmt.Sprintf("🔗 https://%s", svc.URL))
-					}
-
-					// Pod status (if k8s available)
-					if k8sAvailable {
-						pods, err := fetchServicePods(k8sClient, &stack, svc.Name)
-						if err == nil && len(pods) > 0 {
-							printer.PrintIndentedLine(2, "Pods:")
-							for _, pod := range pods {
-								podStatus := k8s.ParsePodStatus(&pod)
-								podLine := fmt.Sprintf("%s | %s | %s | %s",
-									podStatus.Name,
-									podStatus.Phase,
-									k8s.FormatRestarts(podStatus.Restarts),
-									k8s.FormatAge(podStatus.Age))
-								printer.PrintBullet(3, podLine)
-							}
-						}
-					}
-
-					printer.PrintNewline()
-				}
-			} else {
+			if len(services) == 0 {
 				printer.PrintNewline()
 				printer.PrintIndentedLine(1, "No services configured")
+				continue
 			}
+
+			// Fetch blueprint for categorization
+			blueprintContent := fetchBlueprintMetadata(apiClient, stack.Spec.BlueprintReference)
+
+			// 1. Display URLs table
+			displayURLsTable(&stack, services, k8sClient, k8sAvailable)
+
+			// 2. Categorize services
+			regularServices, jobs, infra := categorizeServices(services, k8sClient, &stack, k8sAvailable, blueprintContent)
+
+			// 3. Display categorized pods tables with category-specific headers
+			fmt.Fprintf(os.Stdout, "\n")
+			displayCategorizedPodsTable(regularServices, jobs, infra, k8sClient, &stack, k8sAvailable)
 		}
 	}
 
@@ -341,6 +305,213 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack) error {
 	fmt.Fprintln(os.Stdout, "💡 Tip: Use 'lissto logs' to view logs, 'lissto update' to update images")
 
 	return nil
+}
+
+// fetchBlueprintMetadata fetches blueprint service metadata for categorization
+func fetchBlueprintMetadata(apiClient *client.Client, blueprintRef string) *client.ServiceMetadata {
+	if apiClient == nil || blueprintRef == "" {
+		return nil
+	}
+
+	// Strip namespace prefix if present (e.g., "global/blueprint-id" -> "blueprint-id")
+	// The API expects just the blueprint ID
+	blueprintID := blueprintRef
+	if idx := strings.LastIndex(blueprintRef, "/"); idx != -1 {
+		blueprintID = blueprintRef[idx+1:]
+	}
+
+	blueprint, err := apiClient.GetBlueprint(blueprintID)
+	if err != nil {
+		return nil
+	}
+
+	return &blueprint.Content
+}
+
+// displayURLsTable displays services with exposed URLs
+func displayURLsTable(stack *envv1alpha1.Stack, services []status.ServiceStatus, k8sClient *k8s.Client, k8sAvailable bool) {
+	// Filter services with URLs
+	type urlRow struct {
+		Service string
+		URL     string
+		Ready   string
+		Age     string
+	}
+
+	var urlServices []urlRow
+	for _, svc := range services {
+		if svc.URL == "" {
+			continue
+		}
+
+		// Calculate service age from stack creation timestamp
+		serviceAge := time.Since(stack.CreationTimestamp.Time)
+		ageStr := k8s.FormatAge(serviceAge)
+
+		// Default ready status
+		readyStatus := "⚪ (unknown)"
+
+		if k8sAvailable {
+			// Fetch pods for this service
+			pods, err := fetchServicePods(k8sClient, stack, svc.Name)
+			if err == nil {
+				// Check service readiness (Service, Endpoints, Ingress, Pods)
+				ctx := context.Background()
+				readiness := k8sClient.CheckServiceReadiness(ctx, stack.Namespace, svc.Name, pods, serviceAge)
+				readyStatus = k8s.FormatReadinessStatus(readiness, serviceAge)
+			} else if serviceAge < time.Minute {
+				readyStatus = "⚪ (starting up..)"
+			} else {
+				readyStatus = "⚪ (unknown)"
+			}
+		} else if serviceAge < time.Minute {
+			readyStatus = "⚪ (starting up..)"
+		}
+
+		urlServices = append(urlServices, urlRow{
+			Service: svc.Name,
+			URL:     fmt.Sprintf("https://%s", svc.URL),
+			Ready:   readyStatus,
+			Age:     ageStr,
+		})
+	}
+
+	if len(urlServices) == 0 {
+		return
+	}
+
+	// Sort by service name
+	sort.Slice(urlServices, func(i, j int) bool {
+		return urlServices[i].Service < urlServices[j].Service
+	})
+
+	headers := []string{"NAME", "URL", "READY", "AGE"}
+	var rows [][]string
+	for _, u := range urlServices {
+		rows = append(rows, []string{u.Service, u.URL, u.Ready, u.Age})
+	}
+	output.PrintTable(os.Stdout, headers, rows)
+}
+
+// displayCategorizedPodsTable displays all pods in a single table with category headers
+func displayCategorizedPodsTable(services, jobs, infra []status.ServiceStatus, k8sClient *k8s.Client, stack *envv1alpha1.Stack, k8sAvailable bool) {
+	if !k8sAvailable {
+		return
+	}
+
+	// Display regular services
+	if len(services) > 0 {
+		headers := []string{"SERVICE", "POD NAME", "STATUS", "RESTARTS", "AGE"}
+		rows := buildPodRows(services, k8sClient, stack, false)
+		if len(rows) > 0 {
+			output.PrintTable(os.Stdout, headers, rows)
+		}
+	}
+
+	// Display infrastructure
+	if len(infra) > 0 {
+		if len(services) > 0 {
+			fmt.Fprintf(os.Stdout, "\n")
+		}
+		headers := []string{"INFRA", "POD NAME", "STATUS", "RESTARTS", "AGE"}
+		rows := buildPodRows(infra, k8sClient, stack, false)
+		if len(rows) > 0 {
+			output.PrintTable(os.Stdout, headers, rows)
+		}
+	}
+
+	// Display jobs
+	if len(jobs) > 0 {
+		if len(services) > 0 || len(infra) > 0 {
+			fmt.Fprintf(os.Stdout, "\n")
+		}
+		headers := []string{"JOBS", "POD NAME", "STATUS", "RESTARTS", "AGE"}
+		rows := buildPodRows(jobs, k8sClient, stack, true)
+		if len(rows) > 0 {
+			output.PrintTable(os.Stdout, headers, rows)
+		}
+	}
+}
+
+// buildPodRows builds table rows for a list of services
+func buildPodRows(services []status.ServiceStatus, k8sClient *k8s.Client, stack *envv1alpha1.Stack, isJobGroup bool) [][]string {
+	var rows [][]string
+
+	for _, svc := range services {
+		pods, err := fetchServicePods(k8sClient, stack, svc.Name)
+		if err != nil || len(pods) == 0 {
+			// Show service with no pods
+			rows = append(rows, []string{
+				svc.Name,
+				"❓ No pods found",
+				"-",
+				"-",
+				"-",
+			})
+			continue
+		}
+
+		for _, pod := range pods {
+			podStatus := k8s.ParsePodStatus(&pod)
+
+			// Check if completed (for graying)
+			isCompleted := isJobGroup && pod.Status.Phase == corev1.PodSucceeded
+
+			// Format fields
+			serviceName := svc.Name
+			podName := podStatus.Name
+			phase := podStatus.Phase
+			restarts := formatRestartCountWithHelpers(podStatus.Restarts, isCompleted)
+			age := k8s.FormatAge(podStatus.Age)
+
+			if isCompleted {
+				// Gray out completed jobs
+				serviceName = output.Gray(serviceName)
+				podName = output.Gray(podName)
+				phase = output.Gray(phase)
+				age = output.Gray(age)
+			}
+
+			rows = append(rows, []string{
+				serviceName,
+				podName,
+				phase,
+				restarts,
+				age,
+			})
+		}
+	}
+
+	// For jobs, sort so failed/active jobs appear first
+	if isJobGroup && len(rows) > 0 {
+		sort.SliceStable(rows, func(i, j int) bool {
+			// Check if rows contain gray ANSI codes (completed jobs)
+			iIsCompleted := strings.Contains(rows[i][2], "\033[90m") // Check STATUS column
+			jIsCompleted := strings.Contains(rows[j][2], "\033[90m")
+
+			// Non-completed (active/failed) jobs should come first
+			if iIsCompleted != jIsCompleted {
+				return !iIsCompleted // i comes first if it's NOT completed
+			}
+			// Otherwise maintain original order
+			return false
+		})
+	}
+
+	return rows
+}
+
+// formatRestartCountWithHelpers formats restart count with yellow highlighting if > 0
+func formatRestartCountWithHelpers(restarts int32, isCompleted bool) string {
+	countStr := fmt.Sprintf("%d", restarts)
+	if isCompleted {
+		return output.Gray(countStr)
+	}
+	if restarts > 0 {
+		// Yellow color for restarted pods
+		return output.Yellow(countStr)
+	}
+	return countStr
 }
 
 // getServiceSymbolFromPods determines the service status symbol based on pod states
@@ -530,10 +701,50 @@ func fetchServicePods(k8sClient *k8s.Client, stack *envv1alpha1.Stack, serviceNa
 	return servicePods, nil
 }
 
-func getOutputFormat(cmd *cobra.Command) string {
-	format, _ := cmd.Flags().GetString("output")
-	if format == "" {
-		format = "pretty"
+// categorizeServices categorizes services into regular services, jobs, and infra
+func categorizeServices(services []status.ServiceStatus, k8sClient *k8s.Client, stack *envv1alpha1.Stack, k8sAvailable bool, blueprintContent *client.ServiceMetadata) (regularServices, jobs, infra []status.ServiceStatus) {
+	// Create lookup map for infrastructure services from blueprint
+	infraMap := make(map[string]bool)
+	if blueprintContent != nil {
+		for _, name := range blueprintContent.Infra {
+			infraMap[name] = true
+		}
 	}
-	return format
+
+	for _, svc := range services {
+		// Determine service category based on pod characteristics
+		if k8sAvailable {
+			pods, err := fetchServicePods(k8sClient, stack, svc.Name)
+			if err == nil && len(pods) > 0 {
+				pod := pods[0] // Check first pod to determine type
+
+				// Check restart policy to identify jobs
+				if pod.Spec.RestartPolicy == corev1.RestartPolicyNever ||
+					pod.Spec.RestartPolicy == corev1.RestartPolicyOnFailure {
+					jobs = append(jobs, svc)
+					continue
+				}
+			}
+		}
+
+		// Check if it's an infra component (from blueprint)
+		if infraMap[svc.Name] {
+			infra = append(infra, svc)
+		} else {
+			regularServices = append(regularServices, svc)
+		}
+	}
+
+	// Sort each category by name
+	sort.Slice(regularServices, func(i, j int) bool {
+		return regularServices[i].Name < regularServices[j].Name
+	})
+	sort.Slice(jobs, func(i, j int) bool {
+		return jobs[i].Name < jobs[j].Name
+	})
+	sort.Slice(infra, func(i, j int) bool {
+		return infra[i].Name < infra[j].Name
+	})
+
+	return regularServices, jobs, infra
 }

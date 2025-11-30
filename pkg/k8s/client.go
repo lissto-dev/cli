@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -169,4 +171,70 @@ func (c *Client) GetPod(ctx context.Context, namespace, name string) (*corev1.Po
 		return nil, fmt.Errorf("failed to get pod: %w", err)
 	}
 	return pod, nil
+}
+
+// ListEndpointSlices lists endpoint slices for a service
+func (c *Client) ListEndpointSlices(ctx context.Context, namespace, serviceName string) ([]discoveryv1.EndpointSlice, error) {
+	// EndpointSlices are labeled with the service name
+	labelSelector := fmt.Sprintf("kubernetes.io/service-name=%s", serviceName)
+
+	opts := metav1.ListOptions{
+		LabelSelector: labelSelector,
+	}
+
+	endpointSliceList, err := c.clientset.DiscoveryV1().EndpointSlices(namespace).List(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list endpoint slices: %w", err)
+	}
+
+	return endpointSliceList.Items, nil
+}
+
+// ListIngresses queries ingresses by namespace and label selector
+func (c *Client) ListIngresses(ctx context.Context, namespace string, labels map[string]string) ([]networkingv1.Ingress, error) {
+	// Build label selector
+	labelSelector := ""
+	for k, v := range labels {
+		if labelSelector != "" {
+			labelSelector += ","
+		}
+		labelSelector += fmt.Sprintf("%s=%s", k, v)
+	}
+
+	opts := metav1.ListOptions{}
+	if labelSelector != "" {
+		opts.LabelSelector = labelSelector
+	}
+
+	ingressList, err := c.clientset.NetworkingV1().Ingresses(namespace).List(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ingresses: %w", err)
+	}
+
+	return ingressList.Items, nil
+}
+
+// GetIngressForService finds an ingress that routes to a specific service
+func (c *Client) GetIngressForService(ctx context.Context, namespace, serviceName string) (*networkingv1.Ingress, error) {
+	// List all ingresses in the namespace
+	ingresses, err := c.ListIngresses(ctx, namespace, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find ingress that routes to this service
+	for _, ingress := range ingresses {
+		// Check all rules and paths for matching service
+		for _, rule := range ingress.Spec.Rules {
+			if rule.HTTP != nil {
+				for _, path := range rule.HTTP.Paths {
+					if path.Backend.Service != nil && path.Backend.Service.Name == serviceName {
+						return &ingress, nil
+					}
+				}
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("no ingress found for service %s", serviceName)
 }

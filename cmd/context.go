@@ -72,14 +72,22 @@ func runContextList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Table format
-	headers := []string{"NAME", "K8S CONTEXT", "SERVICE", "NAMESPACE", "CURRENT"}
+	headers := []string{"NAME", "CONTEXT", "SERVICE", "NAMESPACE"}
 	var rows [][]string
 	for _, ctx := range cfg.Contexts {
-		current := ""
+		name := ctx.Name
+		kubeContext := ctx.KubeContext
+		serviceName := ctx.ServiceName
+		serviceNamespace := ctx.ServiceNamespace
+
 		if ctx.Name == cfg.CurrentContext {
-			current = "*"
+			// Bold the entire row and add asterisk to name at the end
+			name = output.Bold(ctx.Name + " *")
+			kubeContext = output.Bold(ctx.KubeContext)
+			serviceName = output.Bold(ctx.ServiceName)
+			serviceNamespace = output.Bold(ctx.ServiceNamespace)
 		}
-		rows = append(rows, []string{ctx.Name, ctx.KubeContext, ctx.ServiceName, ctx.ServiceNamespace, current})
+		rows = append(rows, []string{name, kubeContext, serviceName, serviceNamespace})
 	}
 	output.PrintTable(os.Stdout, headers, rows)
 
