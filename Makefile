@@ -1,4 +1,7 @@
-.PHONY: build install clean test test-verbose test-mcp test-coverage test-ci run release vet fmt lint deps ci
+.PHONY: build install clean test test-verbose test-mcp test-coverage test-ci run release vet fmt lint deps ci check-goreleaser-version
+
+# Required GoReleaser version (pinned to avoid breaking changes)
+GORELEASER_VERSION=2.13.0
 
 # Binary name
 BINARY_DIR=bin
@@ -56,8 +59,26 @@ build-all:
 	GOOS=windows GOARCH=amd64 go build -o build/$(BINARY)-windows-amd64.exe .
 
 # Test release process locally (requires goreleaser)
-release:
+release: check-goreleaser-version
 	goreleaser release --snapshot --clean
+
+# Check GoReleaser version
+check-goreleaser-version:
+	@echo "Checking GoReleaser version..."
+	@INSTALLED_VERSION=$$(goreleaser --version 2>/dev/null | grep GitVersion | awk '{print $$2}'); \
+	if [ -z "$$INSTALLED_VERSION" ]; then \
+		echo "❌ GoReleaser not found. Install it with: brew install goreleaser"; \
+		exit 1; \
+	fi; \
+	if [ "$$INSTALLED_VERSION" != "$(GORELEASER_VERSION)" ]; then \
+		echo "⚠️  Warning: GoReleaser version mismatch"; \
+		echo "   Expected: $(GORELEASER_VERSION)"; \
+		echo "   Installed: $$INSTALLED_VERSION"; \
+		echo "   Install correct version: brew install goreleaser@$(GORELEASER_VERSION) || brew upgrade goreleaser"; \
+		echo "   Continuing anyway..."; \
+	else \
+		echo "✅ GoReleaser version $(GORELEASER_VERSION) is correct"; \
+	fi
 
 # Run go vet
 vet:
@@ -100,7 +121,7 @@ help:
 	@echo "  make test-ci        - Run tests with race detection and coverage (CI)"
 	@echo "  make run            - Run the CLI in development mode"
 	@echo "  make build-all      - Build for multiple platforms"
-	@echo "  make release        - Test release process locally (requires goreleaser)"
+	@echo "  make release        - Test release process locally (requires goreleaser v$(GORELEASER_VERSION))"
 	@echo "  make vet            - Run go vet"
 	@echo "  make fmt            - Format code"
 	@echo "  make lint           - Run linter"

@@ -1,5 +1,9 @@
 # GoReleaser configuration for lissto CLI
 # Visit https://goreleaser.com for documentation
+#
+# Version: This configuration is tested with GoReleaser v2.13.0
+# To maintain compatibility, both the GitHub Action and local development
+# should use this version to avoid breaking changes.
 
 version: 2
 
