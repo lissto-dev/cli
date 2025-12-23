@@ -81,6 +81,7 @@ brews:
       system "#{bin}/lissto", "--version"
     install: |
       bin.install "lissto"
+      generate_completions_from_executable(bin/"lissto", "completion", shells: [:bash, :zsh, :fish])
 
 release:
   github:
