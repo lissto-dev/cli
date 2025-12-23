@@ -6,12 +6,14 @@ import (
 
 // VariableResponse represents a variable config from the API
 type VariableResponse struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	Scope      string            `json:"scope"`
-	Env        string            `json:"env,omitempty"`
-	Repository string            `json:"repository,omitempty"`
-	Data       map[string]string `json:"data"`
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Scope        string            `json:"scope"`
+	Env          string            `json:"env,omitempty"`
+	Repository   string            `json:"repository,omitempty"`
+	Data         map[string]string `json:"data"`
+	CreatedAt    string            `json:"created_at,omitempty"`
+	KeyUpdatedAt map[string]int64  `json:"key_updated_at,omitempty"` // Unix timestamps per key
 }
 
 // CreateVariableRequest represents a request to create a variable config

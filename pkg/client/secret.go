@@ -6,12 +6,14 @@ import (
 
 // SecretResponse represents a secret config from the API (keys only, no values)
 type SecretResponse struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Scope      string   `json:"scope"`
-	Env        string   `json:"env,omitempty"`
-	Repository string   `json:"repository,omitempty"`
-	Keys       []string `json:"keys"`
+	ID           string           `json:"id"`
+	Name         string           `json:"name"`
+	Scope        string           `json:"scope"`
+	Env          string           `json:"env,omitempty"`
+	Repository   string           `json:"repository,omitempty"`
+	Keys         []string         `json:"keys"`
+	CreatedAt    string           `json:"created_at,omitempty"`
+	KeyUpdatedAt map[string]int64 `json:"key_updated_at,omitempty"` // Unix timestamps per key
 }
 
 // CreateSecretRequest represents a request to create a secret config

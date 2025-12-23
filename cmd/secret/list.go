@@ -3,10 +3,11 @@ package secret
 import (
 	"fmt"
 	"os"
-	"strings"
-	"text/tabwriter"
+	"time"
 
 	"github.com/lissto-dev/cli/pkg/cmdutil"
+	"github.com/lissto-dev/cli/pkg/k8s"
+	"github.com/lissto-dev/cli/pkg/output"
 	"github.com/spf13/cobra"
 )
 
@@ -33,15 +34,28 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	return cmdutil.PrintOutput(cmd, secrets, func() {
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "NAME\tSCOPE\tENV\tREPOSITORY\tKEYS")
+		headers := []string{"NAME", "SCOPE", "ENV", "REPOSITORY", "KEY", "UPDATED"}
+		var rows [][]string
 		for _, s := range secrets {
-			keys := strings.Join(s.Keys, ", ")
-			if len(keys) > 40 {
-				keys = keys[:37] + "..."
+			if len(s.Keys) == 0 {
+				// If no keys, show one row with empty key
+				rows = append(rows, []string{s.Name, s.Scope, s.Env, s.Repository, "", ""})
+			} else {
+				// Create a row for each key
+				for _, key := range s.Keys {
+					// Get update time for this specific key
+					updated := ""
+					if s.KeyUpdatedAt != nil {
+						if timestamp, ok := s.KeyUpdatedAt[key]; ok {
+							updatedTime := time.Unix(timestamp, 0)
+							updated = k8s.FormatAge(time.Since(updatedTime))
+						}
+					}
+
+					rows = append(rows, []string{s.Name, s.Scope, s.Env, s.Repository, key, updated})
+				}
 			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", s.Name, s.Scope, s.Env, s.Repository, keys)
 		}
-		w.Flush()
+		output.PrintTable(os.Stdout, headers, rows)
 	})
 }

@@ -31,3 +31,5 @@ func buildResourcePath(base, id, scope, env, repository string) string {
 	return path + buildQueryParams(scope, env, repository)
 }
 
+
+
