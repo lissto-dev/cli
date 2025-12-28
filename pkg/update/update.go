@@ -1,26 +1,20 @@
 package update
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/creativeprojects/go-selfupdate"
 	"github.com/lissto-dev/cli/pkg/config"
 )
 
 const (
-	// GitHubReleasesURL is the URL to fetch the latest release from GitHub
-	GitHubReleasesURL = "https://api.github.com/repos/lissto-dev/cli/releases/latest"
+	// Repository is the GitHub repository for lissto CLI
+	Repository = "lissto-dev/cli"
 )
-
-// GitHubRelease represents a GitHub release response
-type GitHubRelease struct {
-	TagName string `json:"tag_name"`
-	HTMLURL string `json:"html_url"`
-}
 
 // CheckResult contains the result of an update check
 type CheckResult struct {
@@ -55,14 +49,17 @@ func CheckForUpdate(currentVersion string) (*CheckResult, error) {
 				UpdateAvailable: isNewerVersion(cache.LatestVersion, currentVersion),
 				CurrentVersion:  currentVersion,
 				LatestVersion:   cache.LatestVersion,
-				ReleaseURL:      fmt.Sprintf("https://github.com/lissto-dev/cli/releases/tag/%s", cache.LatestVersion),
+				ReleaseURL:      fmt.Sprintf("https://github.com/%s/releases/tag/%s", Repository, cache.LatestVersion),
 			}, nil
 		}
 		return nil, nil
 	}
 
-	// Perform the update check
-	release, err := fetchLatestRelease()
+	// Perform the update check using go-selfupdate
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	latest, found, err := selfupdate.DetectLatest(ctx, selfupdate.ParseSlug(Repository))
 	if err != nil {
 		// Update cache timestamp even on failure to avoid hammering the API
 		cache.UpdateLastChecked("")
@@ -70,52 +67,32 @@ func CheckForUpdate(currentVersion string) (*CheckResult, error) {
 		return nil, err
 	}
 
+	if !found {
+		cache.UpdateLastChecked("")
+		_ = config.SaveUpdateCache(cache)
+		return nil, nil
+	}
+
+	latestVersion := latest.Version()
+	releaseURL := fmt.Sprintf("https://github.com/%s/releases/tag/v%s", Repository, latestVersion)
+	if latest.URL != "" {
+		releaseURL = latest.URL
+	}
+
 	// Update cache with new information
-	cache.UpdateLastChecked(release.TagName)
+	cache.UpdateLastChecked("v" + latestVersion)
 	_ = config.SaveUpdateCache(cache)
 
 	return &CheckResult{
-		UpdateAvailable: isNewerVersion(release.TagName, currentVersion),
+		UpdateAvailable: latest.GreaterThan(currentVersion),
 		CurrentVersion:  currentVersion,
-		LatestVersion:   release.TagName,
-		ReleaseURL:      release.HTMLURL,
+		LatestVersion:   "v" + latestVersion,
+		ReleaseURL:      releaseURL,
 	}, nil
 }
 
-// fetchLatestRelease fetches the latest release from GitHub
-func fetchLatestRelease() (*GitHubRelease, error) {
-	client := &http.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	req, err := http.NewRequest("GET", GitHubReleasesURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("User-Agent", "lissto-cli")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch release: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
-	}
-
-	var release GitHubRelease
-	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return nil, fmt.Errorf("failed to parse release: %w", err)
-	}
-
-	return &release, nil
-}
-
 // isNewerVersion compares two version strings and returns true if latest is newer than current
-// Versions are expected to be in format "vX.Y.Z" or "X.Y.Z"
+// Used for cached version comparison
 func isNewerVersion(latest, current string) bool {
 	// Normalize versions by removing 'v' prefix
 	latest = strings.TrimPrefix(latest, "v")
@@ -151,26 +128,27 @@ func PrintUpdateMessage(result *CheckResult) {
 
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "╭─────────────────────────────────────────────────────────────╮\n")
-	fmt.Fprintf(os.Stderr, "│  A new version of lissto is available: %s → %s  │\n",
-		padVersion(result.CurrentVersion, 8),
-		padVersion(result.LatestVersion, 8))
-	fmt.Fprintf(os.Stderr, "│  Run: brew upgrade lissto                                   │\n")
-	fmt.Fprintf(os.Stderr, "│  Or download from: %s  │\n", padURL(result.ReleaseURL, 39))
+	fmt.Fprintf(os.Stderr, "│  A new version of lissto is available: %-8s → %-8s │\n",
+		truncateVersion(result.CurrentVersion, 8),
+		truncateVersion(result.LatestVersion, 8))
+	fmt.Fprintf(os.Stderr, "│                                                             │\n")
+	fmt.Fprintf(os.Stderr, "│  Homebrew:  brew upgrade lissto                             │\n")
+	fmt.Fprintf(os.Stderr, "│  Download:  %-47s │\n", truncateURL(result.ReleaseURL, 47))
 	fmt.Fprintf(os.Stderr, "╰─────────────────────────────────────────────────────────────╯\n")
 }
 
-// padVersion pads a version string to a fixed width
-func padVersion(v string, width int) string {
-	if len(v) >= width {
-		return v[:width]
+// truncateVersion truncates a version string to a max width
+func truncateVersion(v string, maxWidth int) string {
+	if len(v) > maxWidth {
+		return v[:maxWidth]
 	}
-	return v + strings.Repeat(" ", width-len(v))
+	return v
 }
 
-// padURL pads a URL string to a fixed width
-func padURL(url string, width int) string {
-	if len(url) >= width {
-		return url[:width]
+// truncateURL truncates a URL string to a max width
+func truncateURL(url string, maxWidth int) string {
+	if len(url) > maxWidth {
+		return url[:maxWidth-3] + "..."
 	}
-	return url + strings.Repeat(" ", width-len(url))
+	return url
 }
