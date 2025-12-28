@@ -247,3 +247,40 @@ func TestPrintUpdateMessage(t *testing.T) {
 		ReleaseURL:      "https://github.com/lissto-dev/cli/releases/tag/v1.1.0",
 	})
 }
+
+func TestCheckForUpdateDisabled(t *testing.T) {
+	// Create a temporary directory for the test
+	tmpDir, err := os.MkdirTemp("", "lissto-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Set XDG_CONFIG_HOME to our temp directory
+	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
+	os.Setenv("XDG_CONFIG_HOME", tmpDir)
+	defer os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+
+	// Set XDG_CACHE_HOME to our temp directory
+	oldCacheHome := os.Getenv("XDG_CACHE_HOME")
+	os.Setenv("XDG_CACHE_HOME", tmpDir)
+	defer os.Setenv("XDG_CACHE_HOME", oldCacheHome)
+
+	// Create a config with update check disabled
+	cfg := &config.Config{
+		DisableUpdateCheck: true,
+	}
+	err = config.SaveConfig(cfg)
+	if err != nil {
+		t.Fatalf("Failed to save config: %v", err)
+	}
+
+	// Check that update check returns nil when disabled
+	result, err := CheckForUpdate("v1.0.0")
+	if err != nil {
+		t.Errorf("CheckForUpdate returned error: %v", err)
+	}
+	if result != nil {
+		t.Errorf("CheckForUpdate should return nil when disabled, got %+v", result)
+	}
+}

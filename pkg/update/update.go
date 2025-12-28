@@ -32,6 +32,12 @@ func CheckForUpdate(currentVersion string) (*CheckResult, error) {
 		return nil, nil
 	}
 
+	// Check if update check is disabled in config
+	cfg, err := config.LoadConfig()
+	if err == nil && cfg.DisableUpdateCheck {
+		return nil, nil
+	}
+
 	// Load update cache
 	cache, err := config.LoadUpdateCache()
 	if err != nil {

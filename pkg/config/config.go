@@ -9,10 +9,11 @@ import (
 
 // Config represents the CLI configuration
 type Config struct {
-	CurrentContext string    `yaml:"current-context"`
-	Contexts       []Context `yaml:"contexts"`
-	CurrentEnv     string    `yaml:"current-env,omitempty"`
-	Kubeconfig     string    `yaml:"kubeconfig,omitempty"`
+	CurrentContext      string    `yaml:"current-context"`
+	Contexts            []Context `yaml:"contexts"`
+	CurrentEnv          string    `yaml:"current-env,omitempty"`
+	Kubeconfig          string    `yaml:"kubeconfig,omitempty"`
+	DisableUpdateCheck  bool      `yaml:"disable-update-check,omitempty"`
 }
 
 // Context represents an API connection context
