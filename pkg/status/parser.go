@@ -40,7 +40,7 @@ func ParseStackStatus(conditions []metav1.Condition) StackStatus {
 			} else {
 				status.Reason = cond.Reason
 				status.Message = cond.Message
-				
+
 				// Determine if it's deploying or failed based on reason
 				if strings.Contains(strings.ToLower(cond.Reason), "fail") ||
 					strings.Contains(strings.ToLower(cond.Reason), "error") {
@@ -88,7 +88,7 @@ func ParseServiceStatuses(stack *envv1alpha1.Stack) []ServiceStatus {
 		if strings.HasPrefix(cond.Type, "Resource-deployment-") {
 			// Extract service name: "Resource-deployment-bo" -> "bo"
 			serviceName := strings.TrimPrefix(cond.Type, "Resource-deployment-")
-			
+
 			if svc, exists := serviceMap[serviceName]; exists {
 				if cond.Status == metav1.ConditionTrue {
 					svc.State = "Ready"
@@ -126,4 +126,3 @@ func CountReadyServices(services []ServiceStatus) (ready, total int) {
 	}
 	return ready, total
 }
-

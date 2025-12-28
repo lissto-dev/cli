@@ -1,69 +1,100 @@
-.PHONY: build install clean test test-verbose test-mcp test-coverage test-ci run release vet fmt lint deps ci check-goreleaser-version
+.PHONY: build install clean test test-verbose test-mcp test-coverage run release vet fmt lint deps tidy ci check-goreleaser-version help
 
 # Required GoReleaser version (pinned to avoid breaking changes)
 GORELEASER_VERSION=2.13.0
 
 # Binary name
-BINARY_DIR=bin
-BINARY=$(BINARY_DIR)/lissto
+BUILD_DIR=bin
+BINARY=$(BUILD_DIR)/lissto
 
-# Build the CLI
-build:
-	mkdir -p $(BINARY_DIR)
-	go build -o $(BINARY) .
+# Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
+ifeq (,$(shell go env GOBIN))
+GOBIN=$(shell go env GOPATH)/bin
+else
+GOBIN=$(shell go env GOBIN)
+endif
 
-# Install globally
-install:
-	go install
+# Setting SHELL to bash allows bash commands to be executed by recipes.
+SHELL = /usr/bin/env bash -o pipefail
+.SHELLFLAGS = -ec
 
-# Clean build artifacts
-clean:
-	rm -f $(BINARY)
-	rm -rf $(BINARY_DIR)/
-	rm -f coverage.out coverage.html
+.PHONY: all
+all: build
 
-# Run tests
-test:
-	go run github.com/onsi/ginkgo/v2/ginkgo -r --randomize-all
+##@ General
 
-# Run tests with verbose Ginkgo output
-test-verbose:
-	go run github.com/onsi/ginkgo/v2/ginkgo -r -v --randomize-all
+.PHONY: help
+help: ## Display this help.
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-# Run only MCP tests
-test-mcp:
-	go run github.com/onsi/ginkgo/v2/ginkgo -r -v ./pkg/mcp/
+##@ Development
 
-# Run tests with coverage (local development)
-test-coverage:
-	go run github.com/onsi/ginkgo/v2/ginkgo -r --cover --coverprofile=coverage.out
-	go tool cover -html=coverage.out -o coverage.html
+.PHONY: fmt
+fmt: ## Run go fmt against code.
+	go fmt ./...
+
+.PHONY: vet
+vet: ## Run go vet against code.
+	go vet ./...
+
+.PHONY: test
+test: fmt vet ## Run tests.
+	go test $$(go list ./...) -coverprofile cover.out
+
+.PHONY: test-verbose
+test-verbose: fmt vet ## Run tests with verbose output.
+	go test -v $$(go list ./...)
+
+.PHONY: test-mcp
+test-mcp: fmt vet ## Run only MCP tests.
+	go test -v ./pkg/mcp/...
+
+.PHONY: test-coverage
+test-coverage: fmt vet ## Run tests with coverage report (HTML).
+	go test $$(go list ./...) -coverprofile cover.out
+	go tool cover -html=cover.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
-# Run tests for CI (with coverage using Ginkgo)
-# Note: --race disabled due to Ginkgo parallel test orchestration issues (not production code)
-test-ci:
-	go run github.com/onsi/ginkgo/v2/ginkgo -r --cover --coverprofile=coverage.out --covermode=atomic --randomize-all --fail-fast
+.PHONY: lint
+lint: golangci-lint ## Run golangci-lint linter
+	$(GOLANGCI_LINT) run
 
-# Run the CLI (for development)
-run:
+.PHONY: lint-fix
+lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
+	$(GOLANGCI_LINT) run --fix
+
+##@ Build
+
+.PHONY: build
+build: fmt vet ## Build CLI binary.
+	@mkdir -p $(BUILD_DIR)
+	go build -o $(BINARY) .
+
+.PHONY: install
+install: ## Install globally.
+	go install
+
+.PHONY: run
+run: fmt vet ## Run the CLI in development mode.
 	go run main.go
 
-# Build for multiple platforms
-build-all:
-	mkdir -p build
-	GOOS=darwin GOARCH=amd64 go build -o build/$(BINARY)-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build -o build/$(BINARY)-darwin-arm64 .
-	GOOS=linux GOARCH=amd64 go build -o build/$(BINARY)-linux-amd64 .
-	GOOS=linux GOARCH=arm64 go build -o build/$(BINARY)-linux-arm64 .
-	GOOS=windows GOARCH=amd64 go build -o build/$(BINARY)-windows-amd64.exe .
+.PHONY: build-all
+build-all: fmt vet ## Build for multiple platforms.
+	@mkdir -p $(BUILD_DIR)
+	GOOS=darwin GOARCH=amd64 go build -o $(BUILD_DIR)/lissto-darwin-amd64 .
+	GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/lissto-darwin-arm64 .
+	GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/lissto-linux-amd64 .
+	GOOS=linux GOARCH=arm64 go build -o $(BUILD_DIR)/lissto-linux-arm64 .
+	GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/lissto-windows-amd64.exe .
 
-# Test release process locally (requires goreleaser)
-release: check-goreleaser-version
+##@ Release
+
+.PHONY: release
+release: check-goreleaser-version ## Test release process locally (requires goreleaser).
 	goreleaser release --snapshot --clean
 
-# Check GoReleaser version
-check-goreleaser-version:
+.PHONY: check-goreleaser-version
+check-goreleaser-version: ## Check GoReleaser version.
 	@echo "Checking GoReleaser version..."
 	@INSTALLED_VERSION=$$(goreleaser --version 2>/dev/null | grep GitVersion | awk '{print $$2}'); \
 	if [ -z "$$INSTALLED_VERSION" ]; then \
@@ -80,52 +111,54 @@ check-goreleaser-version:
 		echo "✅ GoReleaser version $(GORELEASER_VERSION) is correct"; \
 	fi
 
-# Run go vet
-vet:
-	go vet ./...
+##@ Cleanup
 
-# Format code
-fmt:
-	go fmt ./...
+.PHONY: clean
+clean: ## Clean build artifacts.
+	go clean
+	@rm -rf $(BUILD_DIR)/
+	@rm -f cover.out coverage.html
 
-# Lint
-lint:
-	golangci-lint run
+##@ Dependencies
 
-# Download dependencies
-deps:
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+## Tool Binaries
+GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+
+## Tool Versions
+GOLANGCI_LINT_VERSION ?= v2.4.0
+
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+$(GOLANGCI_LINT): $(LOCALBIN)
+	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+# go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
+# $1 - target path with name of binary
+# $2 - package url which can be installed
+# $3 - specific version of package
+define go-install-tool
+@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+set -e; \
+package=$(2)@$(3) ;\
+echo "Downloading $${package}" ;\
+rm -f $(1) ;\
+GOBIN=$(LOCALBIN) go install $${package} ;\
+mv $(1) $(1)-$(3) ;\
+} ;\
+ln -sf $$(realpath $(1)-$(3)) $(1)
+endef
+
+.PHONY: deps
+deps: ## Download and verify dependencies.
 	go mod download
 	go mod verify
 
-# Tidy dependencies
-tidy:
+.PHONY: tidy
+tidy: ## Tidy dependencies.
 	go mod tidy
-
-# Run all CI checks locally
-ci: deps vet test-ci lint build
-	@echo ""
-	@echo "✅ All CI checks passed!"
-
-# Help
-help:
-	@echo "Lissto CLI Makefile"
-	@echo ""
-	@echo "Usage:"
-	@echo "  make build          - Build the CLI binary"
-	@echo "  make install        - Install globally"
-	@echo "  make clean          - Remove build artifacts"
-	@echo "  make test           - Run all tests"
-	@echo "  make test-verbose   - Run tests with verbose Ginkgo output"
-	@echo "  make test-mcp       - Run only MCP tests"
-	@echo "  make test-coverage  - Run tests with coverage report (HTML)"
-	@echo "  make test-ci        - Run tests with race detection and coverage (CI)"
-	@echo "  make run            - Run the CLI in development mode"
-	@echo "  make build-all      - Build for multiple platforms"
-	@echo "  make release        - Test release process locally (requires goreleaser v$(GORELEASER_VERSION))"
-	@echo "  make vet            - Run go vet"
-	@echo "  make fmt            - Format code"
-	@echo "  make lint           - Run linter"
-	@echo "  make deps           - Download and verify dependencies"
-	@echo "  make tidy           - Tidy dependencies"
-	@echo "  make ci             - Run all CI checks locally"
 

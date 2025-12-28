@@ -46,7 +46,3 @@ func (c *Client) GetAPIInfo() (*APIInfo, error) {
 
 	return &info, nil
 }
-
-
-
-

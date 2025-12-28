@@ -28,12 +28,3 @@ func runCurrent(cmd *cobra.Command, args []string) error {
 
 	return nil
 }
-
-
-
-
-
-
-
-
-

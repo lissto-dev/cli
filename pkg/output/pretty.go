@@ -60,11 +60,11 @@ func (p *PrettyPrinter) PrintNewline() {
 // FormatTimestamp formats a timestamp into a human-readable format with "ago" suffix
 func FormatTimestamp(t time.Time) (string, string) {
 	formatted := t.UTC().Format("2006-01-02 15:04 MST")
-	
+
 	// Calculate time ago
 	now := time.Now().UTC()
 	diff := now.Sub(t)
-	
+
 	var timeAgo string
 	seconds := int(diff.Seconds())
 	if seconds < 60 {
@@ -79,7 +79,7 @@ func FormatTimestamp(t time.Time) (string, string) {
 		days := seconds / 86400
 		timeAgo = fmt.Sprintf("%dd ago", days)
 	}
-	
+
 	return formatted, timeAgo
 }
 
