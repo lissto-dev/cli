@@ -56,7 +56,6 @@ func (c *Client) StreamLogsMulti(ctx context.Context, namespace string, pods []c
 	errCh := make(chan error, len(pods))
 
 	for _, pod := range pods {
-		pod := pod // Capture for goroutine
 		go func() {
 			// Determine which containers to stream from
 			containers := []string{}

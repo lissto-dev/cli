@@ -7,6 +7,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Status state constants
+const (
+	StateReady     = "Ready"
+	StateDeploying = "Deploying"
+	StateFailed    = "Failed"
+	StateUnknown   = "Unknown"
+)
+
+// Status symbol constants
+const (
+	SymbolReady     = "✅"
+	SymbolDeploying = "⏳"
+	SymbolFailed    = "❌"
+	SymbolUnknown   = "❓"
+)
+
 // StackStatus represents the overall status of a stack
 type StackStatus struct {
 	State   string // Ready, Deploying, Failed, Unknown
@@ -27,16 +43,16 @@ type ServiceStatus struct {
 // ParseStackStatus extracts the overall stack status from conditions
 func ParseStackStatus(conditions []metav1.Condition) StackStatus {
 	status := StackStatus{
-		State:  "Unknown",
-		Symbol: "❓",
+		State:  StateUnknown,
+		Symbol: SymbolUnknown,
 	}
 
 	// Look for Ready condition
 	for _, cond := range conditions {
-		if cond.Type == "Ready" {
+		if cond.Type == StateReady {
 			if cond.Status == metav1.ConditionTrue {
-				status.State = "Ready"
-				status.Symbol = "✅"
+				status.State = StateReady
+				status.Symbol = SymbolReady
 			} else {
 				status.Reason = cond.Reason
 				status.Message = cond.Message
@@ -44,11 +60,11 @@ func ParseStackStatus(conditions []metav1.Condition) StackStatus {
 				// Determine if it's deploying or failed based on reason
 				if strings.Contains(strings.ToLower(cond.Reason), "fail") ||
 					strings.Contains(strings.ToLower(cond.Reason), "error") {
-					status.State = "Failed"
-					status.Symbol = "❌"
+					status.State = StateFailed
+					status.Symbol = SymbolFailed
 				} else {
-					status.State = "Deploying"
-					status.Symbol = "⏳"
+					status.State = StateDeploying
+					status.Symbol = SymbolDeploying
 				}
 			}
 			return status
@@ -57,8 +73,8 @@ func ParseStackStatus(conditions []metav1.Condition) StackStatus {
 
 	// If no Ready condition, check if we're still deploying
 	if len(conditions) > 0 {
-		status.State = "Deploying"
-		status.Symbol = "⏳"
+		status.State = StateDeploying
+		status.Symbol = SymbolDeploying
 	}
 
 	return status
@@ -66,20 +82,20 @@ func ParseStackStatus(conditions []metav1.Condition) StackStatus {
 
 // ParseServiceStatuses extracts per-service status from conditions
 func ParseServiceStatuses(stack *envv1alpha1.Stack) []ServiceStatus {
-	var services []ServiceStatus
+	services := make([]ServiceStatus, 0, len(stack.Spec.Images))
 	serviceMap := make(map[string]*ServiceStatus)
 
 	// First, extract service info from spec.images
 	for serviceName, imageInfo := range stack.Spec.Images {
-		status := &ServiceStatus{
+		svcStatus := &ServiceStatus{
 			Name:   serviceName,
-			State:  "Unknown",
-			Symbol: "❓",
+			State:  StateUnknown,
+			Symbol: SymbolUnknown,
 			Image:  imageInfo.Image,
 			URL:    imageInfo.URL,
 		}
 
-		serviceMap[serviceName] = status
+		serviceMap[serviceName] = svcStatus
 	}
 
 	// Then, update status from conditions
@@ -91,17 +107,17 @@ func ParseServiceStatuses(stack *envv1alpha1.Stack) []ServiceStatus {
 
 			if svc, exists := serviceMap[serviceName]; exists {
 				if cond.Status == metav1.ConditionTrue {
-					svc.State = "Ready"
-					svc.Symbol = "✅"
+					svc.State = StateReady
+					svc.Symbol = SymbolReady
 				} else {
 					// Check if it's a failure or just deploying
 					if strings.Contains(strings.ToLower(cond.Reason), "fail") ||
 						strings.Contains(strings.ToLower(cond.Reason), "error") {
-						svc.State = "Failed"
-						svc.Symbol = "❌"
+						svc.State = StateFailed
+						svc.Symbol = SymbolFailed
 					} else {
-						svc.State = "Deploying"
-						svc.Symbol = "⏳"
+						svc.State = StateDeploying
+						svc.Symbol = SymbolDeploying
 					}
 				}
 			}
@@ -120,7 +136,7 @@ func ParseServiceStatuses(stack *envv1alpha1.Stack) []ServiceStatus {
 func CountReadyServices(services []ServiceStatus) (ready, total int) {
 	total = len(services)
 	for _, svc := range services {
-		if svc.State == "Ready" {
+		if svc.State == StateReady {
 			ready++
 		}
 	}

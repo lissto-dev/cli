@@ -8,6 +8,8 @@ import (
 	"github.com/lissto-dev/cli/pkg/client"
 )
 
+const notAvailable = "N/A"
+
 // PrintImagePreview prints a preview of resolved images in table format
 func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo, exposed []client.ExposedServiceInfo) {
 	// Create URL map for quick lookup
@@ -31,14 +33,14 @@ func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo,
 		}
 
 		// Check if image is missing
-		if img.Digest == "" || img.Digest == "N/A" {
+		if img.Digest == "" || img.Digest == notAvailable {
 			status = "❌ Missing"
 
 			// Show what was attempted - check candidates for image URLs
 			if len(img.Candidates) > 0 {
 				// Show the first candidate that was tried
 				image = img.Candidates[0].ImageURL
-			} else if image == "" || image == "N/A" {
+			} else if image == "" || image == notAvailable {
 				// Fallback: try to construct from registry/imageName
 				if img.Registry != "" && img.ImageName != "" {
 					image = fmt.Sprintf("%s/%s", img.Registry, img.ImageName)

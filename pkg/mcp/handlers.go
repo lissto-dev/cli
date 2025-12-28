@@ -13,6 +13,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// Variable scope constants
+const (
+	scopeGlobal = "global"
+	scopeRepo   = "repo"
+)
+
 // Logger interface for handlers
 type Logger interface {
 	log(format string, args ...interface{})
@@ -588,16 +594,16 @@ func handleVariableCreate(args map[string]interface{}, logger Logger) (interface
 
 func generateVariableNameMCP(scope, env, repository string) string {
 	switch scope {
-	case "global":
-		return "global"
-	case "repo":
+	case scopeGlobal:
+		return scopeGlobal
+	case scopeRepo:
 		parts := strings.Split(repository, "/")
 		if len(parts) > 0 {
 			repoName := parts[len(parts)-1]
 			repoName = strings.TrimSuffix(repoName, ".git")
 			return fmt.Sprintf("repo-%s", repoName)
 		}
-		return "repo"
+		return scopeRepo
 	default:
 		return env
 	}
