@@ -1,0 +1,53 @@
+version: "2"
+run:
+  allow-parallel-runners: true
+linters:
+  default: none
+  enable:
+    - dupl
+    - ginkgolinter
+    - govet
+    - ineffassign
+    - misspell
+    - nakedret
+    - revive
+    - staticcheck
+    - unconvert
+  settings:
+    revive:
+      rules:
+        - name: comment-spacings
+        - name: import-shadowing
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - lll
+        path: cmd/*
+      - linters:
+          - dupl
+          - lll
+        path: pkg/*
+      - linters:
+          - staticcheck
+        text: "QF1003"
+      - linters:
+          - staticcheck
+        text: "SA4011"
+      - linters:
+          - staticcheck
+        text: "SA9003"
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
