@@ -63,6 +63,7 @@ func init() {
 	// Add subcommands
 	rootCmd.AddCommand(createCmd)
 	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(verifyCmd)
 	rootCmd.AddCommand(env.EnvCmd)
 	rootCmd.AddCommand(blueprint.BlueprintCmd)
 	rootCmd.AddCommand(stack.StackCmd)

@@ -328,14 +328,8 @@ func fetchBlueprintMetadata(apiClient *client.Client, blueprintRef string) *clie
 		return nil
 	}
 
-	// Strip namespace prefix if present (e.g., "global/blueprint-id" -> "blueprint-id")
-	// The API expects just the blueprint ID
-	blueprintID := blueprintRef
-	if idx := strings.LastIndex(blueprintRef, "/"); idx != -1 {
-		blueprintID = blueprintRef[idx+1:]
-	}
-
-	blueprint, err := apiClient.GetBlueprint(blueprintID)
+	// API now accepts scoped IDs directly
+	blueprint, err := apiClient.GetBlueprint(blueprintRef)
 	if err != nil {
 		return nil
 	}

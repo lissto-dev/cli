@@ -2,6 +2,7 @@ package interactive
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -16,6 +17,8 @@ const (
 	ActionTryAnotherBranchTag = "Try another branch/tag"
 	ActionBackToBlueprint     = "Back to blueprint selection"
 	ActionCancel              = "Cancel"
+	ActionUpdateExisting      = "Update existing stack images"
+	ActionDeployAnyway        = "Deploy anyway (risky! Use at your own risk)"
 )
 
 // FormatAlignedColumns formats multiple columns of data with proper alignment
@@ -221,6 +224,29 @@ func ConfirmRetryWithBack() (string, error) {
 	return action, nil
 }
 
+// ConfirmDuplicateRepoAction asks what to do when a blueprint from the same repository already exists
+func ConfirmDuplicateRepoAction() (string, error) {
+	var action string
+	// TODO: add delete option
+	prompt := &survey.Select{
+		Message: "⚠️  A stack from this repository already exists. What would you like to do?",
+		Options: []string{
+			ActionUpdateExisting,
+			ActionCancel,
+			ActionDeployAnyway,
+		},
+		Default: ActionUpdateExisting,
+		Help:    "Updating is safer and faster. Deploying a duplicate stack may cause conflicts.",
+	}
+
+	err := survey.AskOne(prompt, &action)
+	if err != nil {
+		return "", err
+	}
+
+	return action, nil
+}
+
 // PromptBranchTag prompts for branch, tag, or commit (single input for simplicity)
 func PromptBranchTag() (branch, tag, commit string, err error) {
 	var value string
@@ -362,4 +388,148 @@ func SelectStack(stacks interface{}) (interface{}, error) {
 	}
 
 	return stackList[selectedIndex], nil
+}
+
+// SelectBlueprintOrCreate prompts the user to select a blueprint or create a new one
+func SelectBlueprintOrCreate(blueprints []client.BlueprintResponse) (action string, blueprint *client.BlueprintResponse, error error) {
+	if len(blueprints) == 0 {
+		return "", nil, fmt.Errorf("no blueprints available")
+	}
+
+	// Sort blueprints by ID descending (newest first)
+	sortedBlueprints := make([]client.BlueprintResponse, len(blueprints))
+	copy(sortedBlueprints, blueprints)
+	sort.Slice(sortedBlueprints, func(i, j int) bool {
+		return sortedBlueprints[i].ID > sortedBlueprints[j].ID
+	})
+
+	// Collect data for columns
+	titles := make([]string, len(sortedBlueprints))
+	ages := make([]string, len(sortedBlueprints))
+	services := make([]string, len(sortedBlueprints))
+
+	for i, bp := range sortedBlueprints {
+		title := bp.Title
+		if title == "" {
+			title = bp.ID
+		}
+
+		// Add scope indicator (global vs user)
+		scope := "🌐" // Global icon
+		if !strings.HasPrefix(bp.ID, "global/") {
+			scope = "👤" // User icon
+		}
+		titles[i] = scope + " " + title
+
+		ages[i] = output.ExtractBlueprintAge(bp.ID)
+
+		// Build services and infra display
+		var parts []string
+		if len(bp.Content.Services) > 0 {
+			parts = append(parts, "Services: "+strings.Join(bp.Content.Services, ", "))
+		}
+		if len(bp.Content.Infra) > 0 {
+			parts = append(parts, "Infra: "+strings.Join(bp.Content.Infra, ", "))
+		}
+
+		if len(parts) > 0 {
+			services[i] = strings.Join(parts, "    ")
+		}
+	}
+
+	// Format aligned options
+	options := FormatAlignedColumns(titles, ages, services)
+
+	// Add separator and create option
+	separatorLine := strings.Repeat("─", 60)
+	options = append(options, separatorLine)
+	options = append(options, "✨ Create additional blueprint")
+
+	// Loop until user selects a valid option (not the separator)
+	for {
+		var selectedIndex int
+		prompt := &survey.Select{
+			Message:  "Choose a blueprint to deploy or create a new one:",
+			Options:  options,
+			PageSize: 15,
+		}
+
+		err := survey.AskOne(prompt, &selectedIndex)
+		if err != nil {
+			return "", nil, err
+		}
+
+		// If user selected the separator line, ignore and re-prompt
+		if selectedIndex == len(sortedBlueprints) {
+			continue // Re-show the prompt
+		}
+
+		// Check if user selected "Create additional blueprint"
+		if selectedIndex > len(sortedBlueprints) {
+			return "create", nil, nil
+		}
+
+		return "deploy", &sortedBlueprints[selectedIndex], nil
+	}
+}
+
+// ConfirmBlueprintAction asks user what to do when a blueprint for the repository already exists
+func ConfirmBlueprintAction(latestBP client.BlueprintResponse) (string, error) {
+	age := output.ExtractBlueprintAge(latestBP.ID)
+	title := latestBP.Title
+	if title == "" {
+		title = latestBP.ID
+	}
+
+	prompt := &survey.Select{
+		Message: fmt.Sprintf("Blueprint for this repository already exists (%s, %s ago)", title, age),
+		Options: []string{
+			"Override latest blueprint (replace existing)",
+			"Create new version (keep both)",
+			"Cancel",
+		},
+		Default: "Override latest blueprint (replace existing)",
+	}
+
+	var action string
+	err := survey.AskOne(prompt, &action)
+	return action, err
+}
+
+// ConfirmStackDeletion asks user what to do when stacks are using the blueprint they want to override
+func ConfirmStackDeletion(stackNames []string) (string, error) {
+	message := fmt.Sprintf(
+		"⚠️  Cannot override blueprint. Active stacks using it:\n  - %s\n\nWhat would you like to do?",
+		strings.Join(stackNames, "\n  - "),
+	)
+
+	prompt := &survey.Select{
+		Message: message,
+		Options: []string{
+			"Delete stack(s) and continue with override",
+			"Create new blueprint version instead",
+			"Cancel",
+		},
+		Default: "Create new blueprint version instead",
+	}
+
+	var action string
+	err := survey.AskOne(prompt, &action)
+	return action, err
+}
+
+// ConfirmNextAction asks user what to do after successfully creating a blueprint
+func ConfirmNextAction() (string, error) {
+	prompt := &survey.Select{
+		Message: "What would you like to do next?",
+		Options: []string{
+			"Deploy this blueprint",
+			"Exit",
+		},
+		Default: "Deploy this blueprint",
+	}
+
+	var action string
+	err := survey.AskOne(prompt, &action)
+	return action, err
 }
