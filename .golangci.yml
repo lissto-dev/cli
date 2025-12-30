@@ -4,15 +4,23 @@ run:
 linters:
   default: none
   enable:
+    - copyloopvar
     - dupl
+    - errcheck
     - ginkgolinter
+    - goconst
+    # - gocyclo  # TODO: Enable after refactoring complex functions (see issue #5)
     - govet
     - ineffassign
+    - lll
     - misspell
     - nakedret
+    - prealloc
     - revive
     - staticcheck
     - unconvert
+    - unparam
+    - unused
   settings:
     revive:
       rules:
@@ -28,15 +36,6 @@ linters:
           - dupl
           - lll
         path: pkg/*
-      - linters:
-          - staticcheck
-        text: "QF1003"
-      - linters:
-          - staticcheck
-        text: "SA4011"
-      - linters:
-          - staticcheck
-        text: "SA9003"
     paths:
       - third_party$
       - builtin$
