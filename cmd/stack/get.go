@@ -32,4 +32,3 @@ func runGet(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Stack ID: %s\n", identifier)
 	})
 }
-

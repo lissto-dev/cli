@@ -206,13 +206,13 @@ blueprintLoop:
 					createTag = tag
 					createCommit = commit
 					continue
-				case "Back to blueprint selection":
+				case interactive.ActionBackToBlueprint:
 					// Reset branch/tag/commit for fresh start
 					createBranch = ""
 					createTag = ""
 					createCommit = ""
 					continue blueprintLoop
-				case "Cancel":
+				case interactive.ActionCancel:
 					return fmt.Errorf("failed to prepare stack: %w", err)
 				}
 			}
@@ -220,10 +220,10 @@ blueprintLoop:
 			// Display preview
 			format := outputFormat
 			if format == "" {
-				format = "table"
+				format = outputFormatTable
 			}
 
-			if format == "table" {
+			if format == outputFormatTable {
 				output.PrintImagePreview(os.Stdout, prepareResp.Images, prepareResp.Exposed)
 			} else {
 				err = output.PrintImagePreviewWithFormat(format, prepareResp)
@@ -252,7 +252,7 @@ blueprintLoop:
 				}
 
 				switch action {
-				case "Try another branch/tag":
+				case interactive.ActionTryAnotherBranchTag:
 					// Get new branch/tag/commit
 					branch, tag, commit, err := interactive.PromptBranchTag()
 					if err != nil {
@@ -264,13 +264,13 @@ blueprintLoop:
 					createTag = tag
 					createCommit = commit
 					continue
-				case "Back to blueprint selection":
+				case interactive.ActionBackToBlueprint:
 					// Reset branch/tag/commit for fresh start
 					createBranch = ""
 					createTag = ""
 					createCommit = ""
 					continue blueprintLoop
-				case "Cancel":
+				case interactive.ActionCancel:
 					return fmt.Errorf("deployment cancelled: missing images")
 				}
 			}
@@ -293,10 +293,9 @@ blueprintLoop:
 			}
 
 			switch action {
-			case "Deploy":
-				// Proceed to deployment
-				break
-			case "Try another branch/tag":
+			case interactive.ActionDeploy:
+				// Proceed to deployment - exit the loop
+			case interactive.ActionTryAnotherBranchTag:
 				// Get new branch/tag/commit
 				branch, tag, commit, err := interactive.PromptBranchTag()
 				if err != nil {
@@ -308,13 +307,13 @@ blueprintLoop:
 				createTag = tag
 				createCommit = commit
 				continue
-			case "Back to blueprint selection":
+			case interactive.ActionBackToBlueprint:
 				// Reset branch/tag/commit for fresh start
 				createBranch = ""
 				createTag = ""
 				createCommit = ""
 				continue blueprintLoop
-			case "Cancel":
+			case interactive.ActionCancel:
 				return fmt.Errorf("deployment cancelled by user")
 			}
 

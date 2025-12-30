@@ -30,6 +30,3 @@ func buildResourcePath(base, id, scope, env, repository string) string {
 	path := fmt.Sprintf("%s/%s", base, id)
 	return path + buildQueryParams(scope, env, repository)
 }
-
-
-

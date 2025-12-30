@@ -8,6 +8,8 @@ import (
 	"github.com/lissto-dev/cli/pkg/client"
 )
 
+const notAvailable = "N/A"
+
 // PrintImagePreview prints a preview of resolved images in table format
 func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo, exposed []client.ExposedServiceInfo) {
 	// Create URL map for quick lookup
@@ -17,11 +19,11 @@ func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo,
 	}
 
 	// Print header
-	fmt.Fprintln(w, "\n🔍 Image Preview:")
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "\n🔍 Image Preview:")
+	_, _ = fmt.Fprintln(w, "")
 
 	headers := []string{"SERVICE", "STATUS", "IMAGE", "URL"}
-	var rows [][]string
+	rows := make([][]string, 0, len(images))
 
 	for _, img := range images {
 		status := "✅ Resolved"
@@ -31,14 +33,14 @@ func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo,
 		}
 
 		// Check if image is missing
-		if img.Digest == "" || img.Digest == "N/A" {
+		if img.Digest == "" || img.Digest == notAvailable {
 			status = "❌ Missing"
 
 			// Show what was attempted - check candidates for image URLs
 			if len(img.Candidates) > 0 {
 				// Show the first candidate that was tried
 				image = img.Candidates[0].ImageURL
-			} else if image == "" || image == "N/A" {
+			} else if image == "" || image == notAvailable {
 				// Fallback: try to construct from registry/imageName
 				if img.Registry != "" && img.ImageName != "" {
 					image = fmt.Sprintf("%s/%s", img.Registry, img.ImageName)
@@ -62,7 +64,7 @@ func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo,
 	}
 
 	PrintTable(w, headers, rows)
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "")
 }
 
 // PrintImagePreviewJSON prints image preview in JSON format

@@ -122,7 +122,7 @@ func (c *Client) testConnection() error {
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 500 {
 		return fmt.Errorf("server returned status %d", resp.StatusCode)
@@ -165,7 +165,7 @@ func (c *Client) Do(method, path string, body, result interface{}) error {
 	if err != nil {
 		return fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Verify API ID if we have an expected ID
 	if c.expectedAPIID != "" {

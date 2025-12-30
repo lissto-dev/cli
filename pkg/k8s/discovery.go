@@ -45,7 +45,7 @@ func (c *Client) DiscoverAPIEndpointFast(ctx context.Context, serviceName, names
 		stopFunc() // Clean up on error
 		return nil, fmt.Errorf("failed to get API info: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -223,9 +223,8 @@ func (c *Client) startPortForward(ctx context.Context, namespace, podName string
 
 	// Start port-forwarding in background
 	go func() {
-		if err := forwarder.ForwardPorts(); err != nil {
-			// Silently ignore errors when stopped intentionally
-		}
+		// Silently ignore errors when stopped intentionally
+		_ = forwarder.ForwardPorts()
 	}()
 
 	// Wait for port-forward to be ready
@@ -252,7 +251,7 @@ func isPortAvailable(port int) bool {
 	if err != nil {
 		return false
 	}
-	listener.Close()
+	_ = listener.Close()
 	return true
 }
 

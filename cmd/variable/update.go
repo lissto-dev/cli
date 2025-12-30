@@ -25,7 +25,7 @@ Examples:
 
 func init() {
 	updateCmd.Flags().StringArrayVarP(&updateData, "data", "d", []string{}, "Data in KEY=value format (can be repeated)")
-	updateCmd.MarkFlagRequired("data")
+	_ = updateCmd.MarkFlagRequired("data")
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {

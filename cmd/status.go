@@ -20,6 +20,19 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// Output format constants
+const (
+	outputFormatJSON  = "json"
+	outputFormatYAML  = "yaml"
+	outputFormatTable = "table"
+)
+
+// Pod status constants
+const (
+	podStatusError   = "Error"
+	podStatusPending = "Pending"
+)
+
 var (
 	statusEnvFilter string
 )
@@ -92,11 +105,11 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	// Handle different output formats
 	switch format {
-	case "json":
+	case outputFormatJSON:
 		return output.PrintJSON(os.Stdout, stacks)
-	case "yaml":
+	case outputFormatYAML:
 		return output.PrintYAML(os.Stdout, stacks)
-	case "table":
+	case outputFormatTable:
 		return printTableStatus(envGroups)
 	default:
 		return printPrettyStatus(envGroups, apiClient)
@@ -135,7 +148,7 @@ func printTableStatus(envGroups map[string][]envv1alpha1.Stack) error {
 	hasUnknown := false
 
 	// Sort environments for consistent output
-	var envs []string
+	envs := make([]string, 0, len(envGroups))
 	for env := range envGroups {
 		envs = append(envs, env)
 	}
@@ -156,14 +169,15 @@ func printTableStatus(envGroups map[string][]envv1alpha1.Stack) error {
 			// Check pod status if k8s client is available
 			if k8sClient != nil {
 				podStatus := checkStackPodsStatus(k8sClient, &stack)
-				if podStatus == "Unknown" {
-					stackStatus.State = "Unknown"
+				switch podStatus {
+				case status.StateUnknown:
+					stackStatus.State = status.StateUnknown
 					hasUnknown = true
-				} else if podStatus == "Error" {
-					stackStatus.State = "Error"
+				case podStatusError:
+					stackStatus.State = podStatusError
 					hasErrors = true
-				} else if podStatus == "Pending" {
-					stackStatus.State = "Deploying"
+				case podStatusPending:
+					stackStatus.State = status.StateDeploying
 				}
 			}
 
@@ -193,12 +207,12 @@ func printTableStatus(envGroups map[string][]envv1alpha1.Stack) error {
 
 	// Show hint if there are errors
 	if hasErrors {
-		fmt.Fprintln(os.Stdout, "\nℹ️  Some pods are in error state. Use 'lissto status -o pretty' for details.")
+		_, _ = fmt.Fprintln(os.Stdout, "\nℹ️  Some pods are in error state. Use 'lissto status -o pretty' for details.")
 	}
 
 	// Show hint if there are unknown statuses
 	if hasUnknown {
-		fmt.Fprintln(os.Stdout, "\n⚠️  Could not find pods for some stacks. Check your cluster context with 'kubectl config current-context'")
+		_, _ = fmt.Fprintln(os.Stdout, "\n⚠️  Could not find pods for some stacks. Check your cluster context with 'kubectl config current-context'")
 	}
 
 	return nil
@@ -218,7 +232,7 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *clie
 	}
 
 	// Sort environments for consistent output
-	var envs []string
+	envs := make([]string, 0, len(envGroups))
 	for env := range envGroups {
 		envs = append(envs, env)
 	}
@@ -246,36 +260,37 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *clie
 			// Stack header with blueprint title if available
 			printer.PrintNewline()
 			stackDisplay := types.GetStackDisplayName(&stack)
-			fmt.Fprintf(os.Stdout, "Stack: %s\n", stackDisplay)
+			_, _ = fmt.Fprintf(os.Stdout, "Stack: %s\n", stackDisplay)
 
 			// Stack status - check actual pod status if k8s available
 			stackStatus := status.ParseStackStatus(stack.Status.Conditions)
 			if k8sAvailable {
 				podStatus := checkStackPodsStatus(k8sClient, &stack)
-				if podStatus == "Unknown" {
-					stackStatus.State = "Unknown"
-					stackStatus.Symbol = "❓"
+				switch podStatus {
+				case status.StateUnknown:
+					stackStatus.State = status.StateUnknown
+					stackStatus.Symbol = status.SymbolUnknown
 					stackStatus.Reason = "Can't find pods - check cluster context"
-				} else if podStatus == "Error" {
-					stackStatus.State = "Error"
-					stackStatus.Symbol = "❌"
+				case podStatusError:
+					stackStatus.State = podStatusError
+					stackStatus.Symbol = status.SymbolFailed
 					stackStatus.Reason = "Pod issues detected"
-				} else if podStatus == "Pending" {
-					stackStatus.State = "Deploying"
-					stackStatus.Symbol = "⏳"
+				case podStatusPending:
+					stackStatus.State = status.StateDeploying
+					stackStatus.Symbol = status.SymbolDeploying
 					stackStatus.Reason = "Pods starting"
 				}
 			}
 
-			fmt.Fprintf(os.Stdout, "Status: %s %s", stackStatus.Symbol, stackStatus.State)
+			_, _ = fmt.Fprintf(os.Stdout, "Status: %s %s", stackStatus.Symbol, stackStatus.State)
 			if stackStatus.Reason != "" {
-				fmt.Fprintf(os.Stdout, " (%s)", stackStatus.Reason)
+				_, _ = fmt.Fprintf(os.Stdout, " (%s)", stackStatus.Reason)
 			}
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 
 			// Creation time
 			formatted, timeAgo := output.FormatTimestamp(stack.CreationTimestamp.Time)
-			fmt.Fprintf(os.Stdout, "Created: %s (%s)\n", formatted, timeAgo)
+			_, _ = fmt.Fprintf(os.Stdout, "Created: %s (%s)\n", formatted, timeAgo)
 
 			// Parse services
 			services := status.ParseServiceStatuses(&stack)
@@ -295,14 +310,14 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *clie
 			regularServices, jobs, infra := categorizeServices(services, k8sClient, &stack, k8sAvailable, blueprintContent)
 
 			// 3. Display categorized pods tables with category-specific headers
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 			displayCategorizedPodsTable(regularServices, jobs, infra, k8sClient, &stack, k8sAvailable)
 		}
 	}
 
 	// Show helpful hints
 	printer.PrintNewline()
-	fmt.Fprintln(os.Stdout, "💡 Tip: Use 'lissto logs' to view logs, 'lissto update' to update images")
+	_, _ = fmt.Fprintln(os.Stdout, "💡 Tip: Use 'lissto logs' to view logs, 'lissto update' to update images")
 
 	return nil
 }
@@ -338,7 +353,7 @@ func displayURLsTable(stack *envv1alpha1.Stack, services []status.ServiceStatus,
 		Age     string
 	}
 
-	var urlServices []urlRow
+	urlServices := make([]urlRow, 0, len(services))
 	for _, svc := range services {
 		if svc.URL == "" {
 			continue
@@ -386,7 +401,7 @@ func displayURLsTable(stack *envv1alpha1.Stack, services []status.ServiceStatus,
 	})
 
 	headers := []string{"NAME", "URL", "READY", "AGE"}
-	var rows [][]string
+	rows := make([][]string, 0, len(urlServices))
 	for _, u := range urlServices {
 		rows = append(rows, []string{u.Service, u.URL, u.Ready, u.Age})
 	}
@@ -411,7 +426,7 @@ func displayCategorizedPodsTable(services, jobs, infra []status.ServiceStatus, k
 	// Display infrastructure
 	if len(infra) > 0 {
 		if len(services) > 0 {
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 		}
 		headers := []string{"INFRA", "POD NAME", "STATUS", "RESTARTS", "AGE"}
 		rows := buildPodRows(infra, k8sClient, stack, false)
@@ -423,7 +438,7 @@ func displayCategorizedPodsTable(services, jobs, infra []status.ServiceStatus, k
 	// Display jobs
 	if len(jobs) > 0 {
 		if len(services) > 0 || len(infra) > 0 {
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 		}
 		headers := []string{"JOBS", "POD NAME", "STATUS", "RESTARTS", "AGE"}
 		rows := buildPodRows(jobs, k8sClient, stack, true)
@@ -514,67 +529,8 @@ func formatRestartCountWithHelpers(restarts int32, isCompleted bool) string {
 	return countStr
 }
 
-// getServiceSymbolFromPods determines the service status symbol based on pod states
-func getServiceSymbolFromPods(pods []corev1.Pod) string {
-	if len(pods) == 0 {
-		return "❓"
-	}
-
-	allRunning := true
-	hasError := false
-
-	for _, pod := range pods {
-		phase := pod.Status.Phase
-
-		// Check for failures
-		if phase == corev1.PodFailed {
-			return "❌"
-		}
-
-		// Check if pod is not running
-		if phase != corev1.PodRunning {
-			allRunning = false
-		}
-
-		// Check container statuses
-		for _, cs := range pod.Status.ContainerStatuses {
-			// Check for error states
-			if cs.State.Waiting != nil {
-				reason := cs.State.Waiting.Reason
-				if reason == "CrashLoopBackOff" ||
-					reason == "ImagePullBackOff" ||
-					reason == "ErrImagePull" ||
-					reason == "CreateContainerError" ||
-					reason == "InvalidImageName" {
-					hasError = true
-				}
-			}
-
-			// Check if container terminated with error
-			if cs.State.Terminated != nil && cs.State.Terminated.ExitCode != 0 {
-				hasError = true
-			}
-
-			// Check if container is not ready
-			if !cs.Ready {
-				allRunning = false
-			}
-		}
-	}
-
-	if hasError {
-		return "❌"
-	}
-
-	if allRunning {
-		return "✅"
-	}
-
-	return "⏳"
-}
-
 // checkStackPodsStatus checks the overall pod status for a stack
-// Returns: "Ready", "Pending", "Error", or "Unknown"
+// Returns: status.StateReady, podStatusPending, podStatusError, or status.StateUnknown
 func checkStackPodsStatus(k8sClient *k8s.Client, stack *envv1alpha1.Stack) string {
 	ctx := context.Background()
 
@@ -586,12 +542,12 @@ func checkStackPodsStatus(k8sClient *k8s.Client, stack *envv1alpha1.Stack) strin
 	pods, err := k8sClient.ListPods(ctx, stack.Namespace, labels)
 	if err != nil {
 		// Error accessing pods (e.g., wrong cluster context, no permissions)
-		return "Unknown"
+		return status.StateUnknown
 	}
 
 	if len(pods) == 0 {
 		// No pods found - likely wrong cluster or stack failed to deploy
-		return "Unknown"
+		return status.StateUnknown
 	}
 
 	hasError := false
@@ -649,14 +605,14 @@ func checkStackPodsStatus(k8sClient *k8s.Client, stack *envv1alpha1.Stack) strin
 	}
 
 	if hasError {
-		return "Error"
+		return podStatusError
 	}
 
 	if hasPending || !allRunning {
-		return "Pending"
+		return podStatusPending
 	}
 
-	return "Ready"
+	return status.StateReady
 }
 
 // fetchServicePods queries k8s for pods belonging to a service

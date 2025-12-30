@@ -98,10 +98,12 @@ func FormatAge(d time.Duration) string {
 
 // FormatRestarts formats restart count
 func FormatRestarts(count int32) string {
-	if count == 0 {
+	switch count {
+	case 0:
 		return "0 restarts"
-	} else if count == 1 {
+	case 1:
 		return "1 restart"
+	default:
+		return fmt.Sprintf("%d restarts", count)
 	}
-	return fmt.Sprintf("%d restarts", count)
 }

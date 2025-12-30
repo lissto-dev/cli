@@ -9,6 +9,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Scope constants
+const scopeEnv = "env"
+
 var (
 	createScope      string
 	createEnv        string
@@ -53,12 +56,12 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// Default scope to "env"
 	scope := createScope
 	if scope == "" {
-		scope = "env"
+		scope = scopeEnv
 	}
 
 	// Default env to current env from config
 	env := createEnv
-	if scope == "env" && env == "" {
+	if scope == scopeEnv && env == "" {
 		env = cmdutil.GetCurrentEnv()
 		if env == "" {
 			return fmt.Errorf("env is required for scope=env. Set with --env or run 'lissto env use <env>'")

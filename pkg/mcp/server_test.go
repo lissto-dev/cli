@@ -27,7 +27,7 @@ var _ = Describe("MCP Server", func() {
 
 	AfterEach(func() {
 		if server != nil {
-			server.Close()
+			_ = server.Close()
 		}
 	})
 

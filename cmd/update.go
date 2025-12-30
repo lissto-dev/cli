@@ -220,14 +220,14 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			}
 
 			switch action {
-			case "Try another branch/tag":
+			case interactive.ActionTryAnotherBranchTag:
 				// Reset and allow reprompting
 				skipBranchPrompt = false
 				branch = ""
 				tag = ""
 				commit = ""
 				continue
-			case "Cancel":
+			case interactive.ActionCancel:
 				return fmt.Errorf("update cancelled")
 			}
 		}
@@ -264,13 +264,13 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			}
 
 			switch action {
-			case "Try another branch/tag":
+			case interactive.ActionTryAnotherBranchTag:
 				skipBranchPrompt = false
 				branch = ""
 				tag = ""
 				commit = ""
 				continue
-			case "Cancel":
+			case interactive.ActionCancel:
 				return fmt.Errorf("update cancelled")
 			}
 		}
@@ -320,7 +320,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			}
 
 			switch action {
-			case "Try another branch/tag":
+			case interactive.ActionTryAnotherBranchTag:
 				// Get new branch/tag/commit
 				branch, tag, commit, err := interactive.PromptBranchTag()
 				if err != nil {
@@ -332,7 +332,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 				updateTag = tag
 				updateCommit = commit
 				return runUpdate(cmd, args)
-			case "Cancel":
+			case interactive.ActionCancel:
 				return nil
 			}
 		}
@@ -375,10 +375,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			}
 
 			switch action {
-			case "Apply Update":
+			case interactive.ActionApplyUpdate:
 				// Continue with update
 				goto applyUpdate
-			case "Try another branch/tag":
+			case interactive.ActionTryAnotherBranchTag:
 				// Get new branch/tag/commit
 				branch, tag, commit, err := interactive.PromptBranchTag()
 				if err != nil {
@@ -390,7 +390,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 				updateTag = tag
 				updateCommit = commit
 				return runUpdate(cmd, args)
-			case "Cancel":
+			case interactive.ActionCancel:
 				return fmt.Errorf("update cancelled")
 			}
 		}

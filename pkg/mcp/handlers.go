@@ -13,6 +13,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 )
 
+// Variable scope constants
+const (
+	scopeGlobal = "global"
+	scopeRepo   = "repo"
+)
+
 // Logger interface for handlers
 type Logger interface {
 	log(format string, args ...interface{})
@@ -135,7 +141,7 @@ func getInt(args map[string]interface{}, key string, defaultVal int) int {
 }
 
 // Environment handlers
-func handleEnvList(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleEnvList(_ map[string]interface{}, logger Logger) (interface{}, error) {
 	logger.log("→ handleEnvList: Getting API client")
 	apiClient, err := getAPIClient()
 	if err != nil {
@@ -215,7 +221,7 @@ func handleEnvCurrent(args map[string]interface{}, logger Logger) (interface{}, 
 }
 
 // Blueprint handlers
-func handleBlueprintList(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleBlueprintList(_ map[string]interface{}, logger Logger) (interface{}, error) {
 	// Always include global blueprints (scope determined by the api, not flag)
 	logger.log("→ handleBlueprintList: Listing all blueprints (user + global)")
 
@@ -239,7 +245,7 @@ func handleBlueprintList(args map[string]interface{}, logger Logger) (interface{
 	}, nil
 }
 
-func handleBlueprintGet(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleBlueprintGet(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -258,7 +264,7 @@ func handleBlueprintGet(args map[string]interface{}, logger Logger) (interface{}
 	return blueprint, nil
 }
 
-func handleBlueprintCreate(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleBlueprintCreate(args map[string]interface{}, _ Logger) (interface{}, error) {
 	compose := getString(args, "compose", "")
 	if compose == "" {
 		return nil, fmt.Errorf("compose is required")
@@ -287,7 +293,7 @@ func handleBlueprintCreate(args map[string]interface{}, logger Logger) (interfac
 	}, nil
 }
 
-func handleBlueprintDelete(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleBlueprintDelete(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -332,7 +338,7 @@ func handleStackList(args map[string]interface{}, logger Logger) (interface{}, e
 	}, nil
 }
 
-func handleStackGet(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleStackGet(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -355,7 +361,7 @@ func handleStackGet(args map[string]interface{}, logger Logger) (interface{}, er
 	}, nil
 }
 
-func handleStackCreate(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleStackCreate(args map[string]interface{}, _ Logger) (interface{}, error) {
 	blueprintName := getString(args, "blueprint_name", "")
 	if blueprintName == "" {
 		return nil, fmt.Errorf("blueprint_name is required")
@@ -393,7 +399,7 @@ func handleStackCreate(args map[string]interface{}, logger Logger) (interface{},
 	}, nil
 }
 
-func handleStackDelete(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleStackDelete(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -416,7 +422,7 @@ func handleStackDelete(args map[string]interface{}, logger Logger) (interface{},
 }
 
 // Admin handlers
-func handleAdminAPIKeyCreate(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleAdminAPIKeyCreate(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -448,7 +454,7 @@ func handleAdminAPIKeyCreate(args map[string]interface{}, logger Logger) (interf
 }
 
 // Variable handlers
-func handleVariableList(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleVariableList(_ map[string]interface{}, logger Logger) (interface{}, error) {
 	logger.log("→ handleVariableList: Getting API client")
 	apiClient, err := getAPIClient()
 	if err != nil {
@@ -466,7 +472,7 @@ func handleVariableList(args map[string]interface{}, logger Logger) (interface{}
 	}, nil
 }
 
-func handleVariableGet(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleVariableGet(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -486,7 +492,7 @@ func handleVariableGet(args map[string]interface{}, logger Logger) (interface{},
 	return variable, nil
 }
 
-func handleVariableCreate(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleVariableCreate(args map[string]interface{}, _ Logger) (interface{}, error) {
 	scope := getString(args, "scope", "env")
 	env := getString(args, "env", "")
 	repository := getString(args, "repository", "")
@@ -588,22 +594,22 @@ func handleVariableCreate(args map[string]interface{}, logger Logger) (interface
 
 func generateVariableNameMCP(scope, env, repository string) string {
 	switch scope {
-	case "global":
-		return "global"
-	case "repo":
+	case scopeGlobal:
+		return scopeGlobal
+	case scopeRepo:
 		parts := strings.Split(repository, "/")
 		if len(parts) > 0 {
 			repoName := parts[len(parts)-1]
 			repoName = strings.TrimSuffix(repoName, ".git")
 			return fmt.Sprintf("repo-%s", repoName)
 		}
-		return "repo"
+		return scopeRepo
 	default:
 		return env
 	}
 }
 
-func handleVariableUpdate(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleVariableUpdate(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -642,7 +648,7 @@ func handleVariableUpdate(args map[string]interface{}, logger Logger) (interface
 	}, nil
 }
 
-func handleVariableDelete(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleVariableDelete(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -664,7 +670,7 @@ func handleVariableDelete(args map[string]interface{}, logger Logger) (interface
 }
 
 // Secret handlers
-func handleSecretList(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleSecretList(_ map[string]interface{}, logger Logger) (interface{}, error) {
 	logger.log("→ handleSecretList: Getting API client")
 	apiClient, err := getAPIClient()
 	if err != nil {
@@ -682,7 +688,7 @@ func handleSecretList(args map[string]interface{}, logger Logger) (interface{}, 
 	}, nil
 }
 
-func handleSecretGet(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleSecretGet(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -702,7 +708,7 @@ func handleSecretGet(args map[string]interface{}, logger Logger) (interface{}, e
 	return secret, nil
 }
 
-func handleSecretCreate(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleSecretCreate(args map[string]interface{}, _ Logger) (interface{}, error) {
 	scope := getString(args, "scope", "env")
 	env := getString(args, "env", "")
 	repository := getString(args, "repository", "")
@@ -788,7 +794,7 @@ func generateSecretNameMCP(scope, env, repository string) string {
 	}
 }
 
-func handleSecretSet(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleSecretSet(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -827,7 +833,7 @@ func handleSecretSet(args map[string]interface{}, logger Logger) (interface{}, e
 	}, nil
 }
 
-func handleSecretDelete(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleSecretDelete(args map[string]interface{}, _ Logger) (interface{}, error) {
 	name := getString(args, "name", "")
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -849,7 +855,7 @@ func handleSecretDelete(args map[string]interface{}, logger Logger) (interface{}
 }
 
 // Status handler
-func handleStatus(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleStatus(args map[string]interface{}, _ Logger) (interface{}, error) {
 	envFilter := getString(args, "env", "")
 
 	apiClient, err := getAPIClient()
@@ -877,7 +883,7 @@ func handleStatus(args map[string]interface{}, logger Logger) (interface{}, erro
 	}
 
 	// Collect status for each stack
-	var stackStatuses []map[string]interface{}
+	stackStatuses := make([]map[string]interface{}, 0, len(stacks))
 
 	for _, stack := range stacks {
 		// Filter by environment if specified
@@ -926,7 +932,7 @@ func handleStatus(args map[string]interface{}, logger Logger) (interface{}, erro
 }
 
 // Logs handler
-func handleLogs(args map[string]interface{}, logger Logger) (interface{}, error) {
+func handleLogs(args map[string]interface{}, _ Logger) (interface{}, error) {
 	stackFilter := getString(args, "stack", "")
 	envFilter := getString(args, "env", "")
 	serviceFilter := getString(args, "service", "")
@@ -1003,7 +1009,7 @@ func handleLogs(args map[string]interface{}, logger Logger) (interface{}, error)
 
 				// Read all logs from stream
 				logBytes, err := io.ReadAll(stream)
-				stream.Close()
+				_ = stream.Close()
 				if err != nil {
 					continue
 				}

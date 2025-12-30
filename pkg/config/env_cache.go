@@ -98,12 +98,3 @@ func (c *EnvCache) GetEnv(name string) (*EnvInfo, error) {
 	}
 	return nil, fmt.Errorf("environment '%s' not found in cache", name)
 }
-
-
-
-
-
-
-
-
-

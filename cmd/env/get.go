@@ -33,4 +33,3 @@ func runGet(cmd *cobra.Command, args []string) error {
 		fmt.Printf("ID: %s\n", env.ID)
 	})
 }
-

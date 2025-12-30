@@ -47,7 +47,7 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 
 	format := cmdutil.GetOutputFormat(cmd)
-	
+
 	return cmdutil.PrintOutput(cmd, stacks, func() {
 		// Table format - check if wide format is requested
 		isWide := format == "wide"

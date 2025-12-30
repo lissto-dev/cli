@@ -65,15 +65,16 @@ func runContextList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if outputFormat == "json" {
+	switch outputFormat {
+	case "json":
 		return output.PrintJSON(os.Stdout, cfg.Contexts)
-	} else if outputFormat == "yaml" {
+	case "yaml":
 		return output.PrintYAML(os.Stdout, cfg.Contexts)
 	}
 
 	// Table format
 	headers := []string{"NAME", "CONTEXT", "SERVICE", "NAMESPACE"}
-	var rows [][]string
+	rows := make([][]string, 0, len(cfg.Contexts))
 	for _, ctx := range cfg.Contexts {
 		name := ctx.Name
 		kubeContext := ctx.KubeContext
@@ -109,9 +110,10 @@ func runContextCurrent(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if outputFormat == "json" {
+	switch outputFormat {
+	case "json":
 		return output.PrintJSON(os.Stdout, ctx)
-	} else if outputFormat == "yaml" {
+	case "yaml":
 		return output.PrintYAML(os.Stdout, ctx)
 	}
 

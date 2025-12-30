@@ -9,6 +9,15 @@ import (
 	"github.com/lissto-dev/cli/pkg/output"
 )
 
+// Action constants for interactive prompts
+const (
+	ActionDeploy              = "Deploy"
+	ActionApplyUpdate         = "Apply Update"
+	ActionTryAnotherBranchTag = "Try another branch/tag"
+	ActionBackToBlueprint     = "Back to blueprint selection"
+	ActionCancel              = "Cancel"
+)
+
 // FormatAlignedColumns formats multiple columns of data with proper alignment
 // Each column is a slice of strings. Returns a slice of aligned strings.
 func FormatAlignedColumns(columns ...[]string) []string {
@@ -113,11 +122,11 @@ func ConfirmDeployment() (string, error) {
 	prompt := &survey.Select{
 		Message: "What would you like to do?",
 		Options: []string{
-			"Deploy",
-			"Try another branch/tag",
-			"Cancel",
+			ActionDeploy,
+			ActionTryAnotherBranchTag,
+			ActionCancel,
 		},
-		Default: "Deploy",
+		Default: ActionDeploy,
 	}
 
 	err := survey.AskOne(prompt, &action)
@@ -134,11 +143,11 @@ func ConfirmUpdate() (string, error) {
 	prompt := &survey.Select{
 		Message: "What would you like to do?",
 		Options: []string{
-			"Apply Update",
-			"Try another branch/tag",
-			"Cancel",
+			ActionApplyUpdate,
+			ActionTryAnotherBranchTag,
+			ActionCancel,
 		},
-		Default: "Apply Update",
+		Default: ActionApplyUpdate,
 	}
 
 	err := survey.AskOne(prompt, &action)
@@ -155,12 +164,12 @@ func ConfirmDeploymentWithBack() (string, error) {
 	prompt := &survey.Select{
 		Message: "What would you like to do?",
 		Options: []string{
-			"Deploy",
-			"Try another branch/tag",
-			"Back to blueprint selection",
-			"Cancel",
+			ActionDeploy,
+			ActionTryAnotherBranchTag,
+			ActionBackToBlueprint,
+			ActionCancel,
 		},
-		Default: "Deploy",
+		Default: ActionDeploy,
 	}
 
 	err := survey.AskOne(prompt, &action)
@@ -177,10 +186,10 @@ func ConfirmRetry() (string, error) {
 	prompt := &survey.Select{
 		Message: "What would you like to do?",
 		Options: []string{
-			"Try another branch/tag",
-			"Cancel",
+			ActionTryAnotherBranchTag,
+			ActionCancel,
 		},
-		Default: "Try another branch/tag",
+		Default: ActionTryAnotherBranchTag,
 	}
 
 	err := survey.AskOne(prompt, &action)
@@ -197,11 +206,11 @@ func ConfirmRetryWithBack() (string, error) {
 	prompt := &survey.Select{
 		Message: "What would you like to do?",
 		Options: []string{
-			"Try another branch/tag",
-			"Back to blueprint selection",
-			"Cancel",
+			ActionTryAnotherBranchTag,
+			ActionBackToBlueprint,
+			ActionCancel,
 		},
-		Default: "Try another branch/tag",
+		Default: ActionTryAnotherBranchTag,
 	}
 
 	err := survey.AskOne(prompt, &action)
