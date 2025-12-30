@@ -59,8 +59,8 @@ func runGet(cmd *cobra.Command, args []string) error {
 		fmt.Println("Data:")
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		for k, v := range variable.Data {
-			fmt.Fprintf(w, "  %s\t= %s\n", k, v)
+			_, _ = fmt.Fprintf(w, "  %s\t= %s\n", k, v)
 		}
-		w.Flush()
+		_ = w.Flush()
 	})
 }

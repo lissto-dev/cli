@@ -19,11 +19,11 @@ func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo,
 	}
 
 	// Print header
-	fmt.Fprintln(w, "\n🔍 Image Preview:")
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "\n🔍 Image Preview:")
+	_, _ = fmt.Fprintln(w, "")
 
 	headers := []string{"SERVICE", "STATUS", "IMAGE", "URL"}
-	var rows [][]string
+	rows := make([][]string, 0, len(images))
 
 	for _, img := range images {
 		status := "✅ Resolved"
@@ -64,7 +64,7 @@ func PrintImagePreview(w io.Writer, images []client.DetailedImageResolutionInfo,
 	}
 
 	PrintTable(w, headers, rows)
-	fmt.Fprintln(w, "")
+	_, _ = fmt.Fprintln(w, "")
 }
 
 // PrintImagePreviewJSON prints image preview in JSON format

@@ -294,8 +294,7 @@ blueprintLoop:
 
 			switch action {
 			case interactive.ActionDeploy:
-				// Proceed to deployment
-				break
+				// Proceed to deployment - exit the loop
 			case interactive.ActionTryAnotherBranchTag:
 				// Get new branch/tag/commit
 				branch, tag, commit, err := interactive.PromptBranchTag()

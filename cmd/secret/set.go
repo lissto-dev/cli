@@ -27,7 +27,7 @@ Examples:
 
 func init() {
 	setCmd.Flags().StringArrayVarP(&setSecrets, "secret", "k", []string{}, "Secret in KEY=value format (can be repeated)")
-	setCmd.MarkFlagRequired("secret")
+	_ = setCmd.MarkFlagRequired("secret")
 }
 
 func runSet(cmd *cobra.Command, args []string) error {

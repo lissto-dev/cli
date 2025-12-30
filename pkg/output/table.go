@@ -28,9 +28,9 @@ func PrintTable(w io.Writer, headers []string, rows [][]string) {
 		for i, val := range row {
 			rowVals[i] = val
 		}
-		table.Append(rowVals...)
+		_ = table.Append(rowVals...)
 	}
 
 	// Render
-	table.Render()
+	_ = table.Render()
 }

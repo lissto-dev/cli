@@ -148,7 +148,7 @@ func printTableStatus(envGroups map[string][]envv1alpha1.Stack) error {
 	hasUnknown := false
 
 	// Sort environments for consistent output
-	var envs []string
+	envs := make([]string, 0, len(envGroups))
 	for env := range envGroups {
 		envs = append(envs, env)
 	}
@@ -207,12 +207,12 @@ func printTableStatus(envGroups map[string][]envv1alpha1.Stack) error {
 
 	// Show hint if there are errors
 	if hasErrors {
-		fmt.Fprintln(os.Stdout, "\nℹ️  Some pods are in error state. Use 'lissto status -o pretty' for details.")
+		_, _ = fmt.Fprintln(os.Stdout, "\nℹ️  Some pods are in error state. Use 'lissto status -o pretty' for details.")
 	}
 
 	// Show hint if there are unknown statuses
 	if hasUnknown {
-		fmt.Fprintln(os.Stdout, "\n⚠️  Could not find pods for some stacks. Check your cluster context with 'kubectl config current-context'")
+		_, _ = fmt.Fprintln(os.Stdout, "\n⚠️  Could not find pods for some stacks. Check your cluster context with 'kubectl config current-context'")
 	}
 
 	return nil
@@ -232,7 +232,7 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *clie
 	}
 
 	// Sort environments for consistent output
-	var envs []string
+	envs := make([]string, 0, len(envGroups))
 	for env := range envGroups {
 		envs = append(envs, env)
 	}
@@ -260,7 +260,7 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *clie
 			// Stack header with blueprint title if available
 			printer.PrintNewline()
 			stackDisplay := types.GetStackDisplayName(&stack)
-			fmt.Fprintf(os.Stdout, "Stack: %s\n", stackDisplay)
+			_, _ = fmt.Fprintf(os.Stdout, "Stack: %s\n", stackDisplay)
 
 			// Stack status - check actual pod status if k8s available
 			stackStatus := status.ParseStackStatus(stack.Status.Conditions)
@@ -282,15 +282,15 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *clie
 				}
 			}
 
-			fmt.Fprintf(os.Stdout, "Status: %s %s", stackStatus.Symbol, stackStatus.State)
+			_, _ = fmt.Fprintf(os.Stdout, "Status: %s %s", stackStatus.Symbol, stackStatus.State)
 			if stackStatus.Reason != "" {
-				fmt.Fprintf(os.Stdout, " (%s)", stackStatus.Reason)
+				_, _ = fmt.Fprintf(os.Stdout, " (%s)", stackStatus.Reason)
 			}
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 
 			// Creation time
 			formatted, timeAgo := output.FormatTimestamp(stack.CreationTimestamp.Time)
-			fmt.Fprintf(os.Stdout, "Created: %s (%s)\n", formatted, timeAgo)
+			_, _ = fmt.Fprintf(os.Stdout, "Created: %s (%s)\n", formatted, timeAgo)
 
 			// Parse services
 			services := status.ParseServiceStatuses(&stack)
@@ -310,14 +310,14 @@ func printPrettyStatus(envGroups map[string][]envv1alpha1.Stack, apiClient *clie
 			regularServices, jobs, infra := categorizeServices(services, k8sClient, &stack, k8sAvailable, blueprintContent)
 
 			// 3. Display categorized pods tables with category-specific headers
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 			displayCategorizedPodsTable(regularServices, jobs, infra, k8sClient, &stack, k8sAvailable)
 		}
 	}
 
 	// Show helpful hints
 	printer.PrintNewline()
-	fmt.Fprintln(os.Stdout, "💡 Tip: Use 'lissto logs' to view logs, 'lissto update' to update images")
+	_, _ = fmt.Fprintln(os.Stdout, "💡 Tip: Use 'lissto logs' to view logs, 'lissto update' to update images")
 
 	return nil
 }
@@ -353,7 +353,7 @@ func displayURLsTable(stack *envv1alpha1.Stack, services []status.ServiceStatus,
 		Age     string
 	}
 
-	var urlServices []urlRow
+	urlServices := make([]urlRow, 0, len(services))
 	for _, svc := range services {
 		if svc.URL == "" {
 			continue
@@ -401,7 +401,7 @@ func displayURLsTable(stack *envv1alpha1.Stack, services []status.ServiceStatus,
 	})
 
 	headers := []string{"NAME", "URL", "READY", "AGE"}
-	var rows [][]string
+	rows := make([][]string, 0, len(urlServices))
 	for _, u := range urlServices {
 		rows = append(rows, []string{u.Service, u.URL, u.Ready, u.Age})
 	}
@@ -426,7 +426,7 @@ func displayCategorizedPodsTable(services, jobs, infra []status.ServiceStatus, k
 	// Display infrastructure
 	if len(infra) > 0 {
 		if len(services) > 0 {
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 		}
 		headers := []string{"INFRA", "POD NAME", "STATUS", "RESTARTS", "AGE"}
 		rows := buildPodRows(infra, k8sClient, stack, false)
@@ -438,7 +438,7 @@ func displayCategorizedPodsTable(services, jobs, infra []status.ServiceStatus, k
 	// Display jobs
 	if len(jobs) > 0 {
 		if len(services) > 0 || len(infra) > 0 {
-			fmt.Fprintf(os.Stdout, "\n")
+			_, _ = fmt.Fprintf(os.Stdout, "\n")
 		}
 		headers := []string{"JOBS", "POD NAME", "STATUS", "RESTARTS", "AGE"}
 		rows := buildPodRows(jobs, k8sClient, stack, true)
