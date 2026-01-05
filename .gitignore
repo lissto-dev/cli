@@ -28,5 +28,6 @@ go.work.sum
 *.swo
 *~
 
+cover.out
 coverage.out
 coverage.html

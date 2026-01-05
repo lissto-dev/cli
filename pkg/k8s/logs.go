@@ -56,7 +56,6 @@ func (c *Client) StreamLogsMulti(ctx context.Context, namespace string, pods []c
 	errCh := make(chan error, len(pods))
 
 	for _, pod := range pods {
-		pod := pod // Capture for goroutine
 		go func() {
 			// Determine which containers to stream from
 			containers := []string{}
@@ -84,7 +83,7 @@ func (c *Client) StreamLogsMulti(ctx context.Context, namespace string, pods []c
 				for scanner.Scan() {
 					select {
 					case <-ctx.Done():
-						stream.Close()
+						_ = stream.Close()
 						return
 					case output <- LogLine{
 						PodName:   pod.Name,
@@ -95,7 +94,7 @@ func (c *Client) StreamLogsMulti(ctx context.Context, namespace string, pods []c
 					}
 				}
 
-				stream.Close()
+				_ = stream.Close()
 
 				if err := scanner.Err(); err != nil && err != io.EOF {
 					errCh <- fmt.Errorf("error reading logs from pod %s: %w", pod.Name, err)
@@ -124,7 +123,7 @@ func (c *Client) GetPodContainers(ctx context.Context, namespace, podName string
 		return nil, err
 	}
 
-	var containers []string
+	containers := make([]string, 0, len(pod.Spec.Containers))
 	for _, c := range pod.Spec.Containers {
 		containers = append(containers, c.Name)
 	}

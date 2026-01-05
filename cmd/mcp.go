@@ -66,7 +66,7 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create MCP server: %w", err)
 	}
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 
 	// Setup signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)

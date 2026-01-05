@@ -36,4 +36,3 @@ func runList(cmd *cobra.Command, args []string) error {
 		output.PrintTable(os.Stdout, headers, rows)
 	})
 }
-

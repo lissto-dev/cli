@@ -117,7 +117,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	}
 
 	// Filter stacks by provided filters
-	var targetStacks []interface{}
+	targetStacks := make([]interface{}, 0, len(allStacks))
 	for _, stack := range allStacks {
 		// Filter by stack name
 		if logsStack != "" && stack.Name != logsStack {
@@ -272,7 +272,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 			prefix = fmt.Sprintf("%s[%s/%s]%s", color, logLine.PodName, logLine.Container, reset)
 		}
 
-		fmt.Fprintf(os.Stdout, "%s %s\n", prefix, logLine.Message)
+		_, _ = fmt.Fprintf(os.Stdout, "%s %s\n", prefix, logLine.Message)
 	}
 
 	// Check for errors

@@ -254,14 +254,14 @@ func (s *Server) sendResult(id interface{}, result interface{}) {
 }
 
 // sendError sends an error JSON-RPC response
-func (s *Server) sendError(id interface{}, code int, message string, data interface{}) {
+func (s *Server) sendError(id interface{}, code int, message string, _ interface{}) {
 	response := JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error: &RPCError{
 			Code:    code,
 			Message: message,
-			Data:    data,
+			Data:    nil,
 		},
 	}
 

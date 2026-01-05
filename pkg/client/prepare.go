@@ -66,8 +66,3 @@ func (c *Client) PrepareStack(blueprint, env, commit, branch, tag string, detail
 
 	return &response, nil
 }
-
-
-
-
-
