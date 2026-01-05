@@ -4,7 +4,7 @@ go 1.24.9
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
-	github.com/lissto-dev/api v0.0.0
+	github.com/lissto-dev/api v0.1.14-rc1
 	github.com/lissto-dev/controller v0.1.14-rc1
 	github.com/olekukonko/tablewriter v1.1.2
 	github.com/onsi/ginkgo/v2 v2.27.2
@@ -89,5 +89,3 @@ require (
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-replace github.com/lissto-dev/api => ../api
