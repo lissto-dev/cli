@@ -259,8 +259,9 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 			fmt.Printf("\n❌ Repository configuration error\n")
 			fmt.Printf("   Detected: %s\n\n", normalizedRepo)
 			fmt.Printf("💡 This repository is not in your Lissto configuration.\n")
-			fmt.Printf("   If using SSH host aliases (e.g., github.com-lissto), use:\n")
-			fmt.Printf("   'lissto blueprint create <file> --repository git@github.com:org/repo.git'\n")
+			fmt.Printf("   If using SSH host aliases (e.g., github.com-lissto), try:\n")
+			fmt.Printf("   • Set %s=git@github.com:org/repo.git\n", cmdutil.EnvOverrideRepository)
+			fmt.Printf("   • Or use: lissto blueprint create <file> --repository git@github.com:org/repo.git\n")
 		}
 		return nil, fmt.Errorf("failed to create blueprint: %w", err)
 	}
