@@ -153,7 +153,7 @@ func runCreateRouter(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("selection cancelled: %w", err)
 	}
 
-	if action == "create" {
+	if action == interactive.ActionCreateAdditional {
 		// User wants to create new blueprint
 		return runCreateBlueprintWizard(cmd, args)
 	}
@@ -196,7 +196,7 @@ func runCreateBlueprintWizard(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if action == "Deploy this blueprint" && createdBlueprint != nil {
+	if action == interactive.ActionDeployThisBlueprint && createdBlueprint != nil {
 		// Step 12: Set the blueprint and run stack deployment
 		createBlueprint = createdBlueprint.ID
 		fmt.Println()
@@ -421,7 +421,7 @@ blueprintLoop:
 				}
 
 				switch action {
-				case "Try another branch/tag":
+				case interactive.ActionTryAnotherBranchTag:
 					// Get new branch/tag/commit
 					branch, tag, commit, promptErr := interactive.PromptBranchTag()
 					if promptErr != nil {

@@ -16,6 +16,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Environment variable names for overriding auto-detection
+const (
+	EnvRepository  = "LISSTO_REPOSITORY"
+	EnvComposeFile = "LISSTO_COMPOSE_FILE"
+)
+
 // findGitRepo searches upward from the given directory to find a .git directory
 func findGitRepo(startDir string) (string, error) {
 	absPath, err := filepath.Abs(startDir)
@@ -78,36 +84,58 @@ func inferRepositoryFromFile(composeFile string) (string, error) {
 
 // blueprintWizardFlow orchestrates the complete blueprint creation wizard
 func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.BlueprintResponse, error) {
-	// Step 1: Detect compose files in current directory (with warnings silenced)
-	currentDir, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %w", err)
+	var selectedFile string
+	var repository string
+
+	// Check for LISSTO_COMPOSE_FILE env var override
+	if envComposeFile := os.Getenv(EnvComposeFile); envComposeFile != "" {
+		// Validate the file exists
+		if _, err := os.Stat(envComposeFile); err != nil {
+			return nil, fmt.Errorf("compose file from %s not found: %s", EnvComposeFile, envComposeFile)
+		}
+		selectedFile = envComposeFile
+		fmt.Printf("📄 Using compose file from %s: %s\n", EnvComposeFile, selectedFile)
+	} else {
+		// Step 1: Detect compose files in current directory (with warnings silenced)
+		currentDir, err := os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get current directory: %w", err)
+		}
+
+		composeFiles, err := compose.DetectComposeFilesQuiet(currentDir)
+		if err != nil {
+			return nil, fmt.Errorf("failed to detect compose files: %w", err)
+		}
+
+		if len(composeFiles) == 0 {
+			return nil, fmt.Errorf("no valid compose files found in current directory.\nSuggestion: Use 'lissto blueprint create <file>' or set %s", EnvComposeFile)
+		}
+
+		// Step 2: Select compose file (auto or prompt)
+		selectedFile, err = compose.SelectComposeFile(composeFiles)
+		if err != nil {
+			return nil, fmt.Errorf("compose file selection cancelled: %w", err)
+		}
 	}
 
-	composeFiles, err := compose.DetectComposeFilesQuiet(currentDir)
-	if err != nil {
-		return nil, fmt.Errorf("failed to detect compose files: %w", err)
-	}
-
-	if len(composeFiles) == 0 {
-		return nil, fmt.Errorf("no valid compose files found in current directory.\nSuggestion: Use 'lissto blueprint create <file>' with -f flag for explicit file path")
-	}
-
-	// Step 2: Select compose file (auto or prompt)
-	selectedFile, err := compose.SelectComposeFile(composeFiles)
-	if err != nil {
-		return nil, fmt.Errorf("compose file selection cancelled: %w", err)
-	}
-
-	// Step 3: Detect git repository
-	repository, err := inferRepositoryFromFile(selectedFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to detect git repository: %w", err)
+	// Check for LISSTO_REPOSITORY env var override
+	if envRepo := os.Getenv(EnvRepository); envRepo != "" {
+		repository = envRepo
+		fmt.Printf("📦 Using repository from %s: %s\n", EnvRepository, repository)
+	} else {
+		// Step 3: Detect git repository
+		var err error
+		repository, err = inferRepositoryFromFile(selectedFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to detect git repository: %w\nSuggestion: Set %s to specify the repository", err, EnvRepository)
+		}
 	}
 
 	// Step 4: Normalize repository URL
 	normalizedRepo := controllerconfig.NormalizeRepositoryURL(repository)
-	fmt.Printf("📦 Detected repository: %s\n", normalizedRepo)
+	if os.Getenv(EnvRepository) == "" {
+		fmt.Printf("📦 Detected repository: %s\n", normalizedRepo)
+	}
 
 	// Step 5: Validate compose file with warning detection
 	fmt.Println("\n📋 Validating compose file...")
@@ -156,7 +184,7 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 		}
 
 		switch action {
-		case "Override latest blueprint (replace existing)":
+		case interactive.ActionOverrideBlueprint:
 			shouldOverride = true
 			blueprintIDToDelete = latestBP.ID
 
@@ -184,7 +212,7 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 				}
 
 				switch stackAction {
-				case "Delete stack(s) and continue with override":
+				case interactive.ActionDeleteStacksContinue:
 					// Delete all stacks using this blueprint
 					fmt.Println("\nDeleting stacks...")
 					for _, stack := range stacks {
@@ -195,19 +223,19 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 					}
 					fmt.Println("✅ Stacks deleted successfully")
 
-				case "Create new blueprint version instead":
+				case interactive.ActionCreateVersionInstead:
 					shouldOverride = false
 					blueprintIDToDelete = ""
 
-				case "Cancel":
+				case interactive.ActionCancel:
 					return nil, fmt.Errorf("cancelled by user")
 				}
 			}
 
-		case "Create new version (keep both)":
+		case interactive.ActionCreateNewVersion:
 			shouldOverride = false
 
-		case "Cancel":
+		case interactive.ActionCancel:
 			return nil, fmt.Errorf("cancelled by user")
 		}
 	}

@@ -19,6 +19,16 @@ const (
 	ActionCancel              = "Cancel"
 	ActionUpdateExisting      = "Update existing stack images"
 	ActionDeployAnyway        = "Deploy anyway (risky! Use at your own risk)"
+
+	// Blueprint action constants
+	ActionOverrideBlueprint    = "Override latest blueprint (replace existing)"
+	ActionCreateNewVersion     = "Create new version (keep both)"
+	ActionDeleteStacksContinue = "Delete stack(s) and continue with override"
+	ActionCreateVersionInstead = "Create new blueprint version instead"
+	ActionDeployThisBlueprint  = "Deploy this blueprint"
+	ActionExit                 = "Exit"
+	ActionCreateAdditional     = "create"
+	ActionDeployExisting       = "deploy"
 )
 
 // FormatAlignedColumns formats multiple columns of data with proper alignment
@@ -466,10 +476,10 @@ func SelectBlueprintOrCreate(blueprints []client.BlueprintResponse) (action stri
 
 		// Check if user selected "Create additional blueprint"
 		if selectedIndex > len(sortedBlueprints) {
-			return "create", nil, nil
+			return ActionCreateAdditional, nil, nil
 		}
 
-		return "deploy", &sortedBlueprints[selectedIndex], nil
+		return ActionDeployExisting, &sortedBlueprints[selectedIndex], nil
 	}
 }
 
@@ -484,11 +494,11 @@ func ConfirmBlueprintAction(latestBP client.BlueprintResponse) (string, error) {
 	prompt := &survey.Select{
 		Message: fmt.Sprintf("Blueprint for this repository already exists (%s, %s ago)", title, age),
 		Options: []string{
-			"Override latest blueprint (replace existing)",
-			"Create new version (keep both)",
-			"Cancel",
+			ActionOverrideBlueprint,
+			ActionCreateNewVersion,
+			ActionCancel,
 		},
-		Default: "Override latest blueprint (replace existing)",
+		Default: ActionOverrideBlueprint,
 	}
 
 	var action string
@@ -506,11 +516,11 @@ func ConfirmStackDeletion(stackNames []string) (string, error) {
 	prompt := &survey.Select{
 		Message: message,
 		Options: []string{
-			"Delete stack(s) and continue with override",
-			"Create new blueprint version instead",
-			"Cancel",
+			ActionDeleteStacksContinue,
+			ActionCreateVersionInstead,
+			ActionCancel,
 		},
-		Default: "Create new blueprint version instead",
+		Default: ActionCreateVersionInstead,
 	}
 
 	var action string
@@ -523,10 +533,10 @@ func ConfirmNextAction() (string, error) {
 	prompt := &survey.Select{
 		Message: "What would you like to do next?",
 		Options: []string{
-			"Deploy this blueprint",
-			"Exit",
+			ActionDeployThisBlueprint,
+			ActionExit,
 		},
-		Default: "Deploy this blueprint",
+		Default: ActionDeployThisBlueprint,
 	}
 
 	var action string
