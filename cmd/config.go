@@ -113,9 +113,10 @@ func runConfigList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	if outputFormat == "json" {
+	switch outputFormat {
+	case outputFormatJSON:
 		return output.PrintJSON(os.Stdout, cfg.Settings)
-	} else if outputFormat == "yaml" {
+	case outputFormatYAML:
 		return output.PrintYAML(os.Stdout, cfg.Settings)
 	}
 

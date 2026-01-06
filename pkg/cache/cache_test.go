@@ -24,7 +24,7 @@ var _ = Describe("Cache", func() {
 	})
 
 	AfterEach(func() {
-		os.RemoveAll(tmpDir)
+		Expect(os.RemoveAll(tmpDir)).To(Succeed())
 	})
 
 	Describe("Set and Get", func() {
@@ -107,11 +107,11 @@ var _ = Describe("Cache", func() {
 
 		BeforeEach(func() {
 			oldCacheHome = os.Getenv("XDG_CACHE_HOME")
-			os.Setenv("XDG_CACHE_HOME", tmpDir)
+			Expect(os.Setenv("XDG_CACHE_HOME", tmpDir)).To(Succeed())
 		})
 
 		AfterEach(func() {
-			os.Setenv("XDG_CACHE_HOME", oldCacheHome)
+			Expect(os.Setenv("XDG_CACHE_HOME", oldCacheHome)).To(Succeed())
 		})
 
 		It("should create cache in default directory", func() {

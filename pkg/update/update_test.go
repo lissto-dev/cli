@@ -37,14 +37,14 @@ var _ = Describe("Update", func() {
 
 				oldConfigHome = os.Getenv("XDG_CONFIG_HOME")
 				oldCacheHome = os.Getenv("XDG_CACHE_HOME")
-				os.Setenv("XDG_CONFIG_HOME", tmpDir)
-				os.Setenv("XDG_CACHE_HOME", tmpDir)
+				Expect(os.Setenv("XDG_CONFIG_HOME", tmpDir)).To(Succeed())
+				Expect(os.Setenv("XDG_CACHE_HOME", tmpDir)).To(Succeed())
 			})
 
 			AfterEach(func() {
-				os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
-				os.Setenv("XDG_CACHE_HOME", oldCacheHome)
-				os.RemoveAll(tmpDir)
+				Expect(os.Setenv("XDG_CONFIG_HOME", oldConfigHome)).To(Succeed())
+				Expect(os.Setenv("XDG_CACHE_HOME", oldCacheHome)).To(Succeed())
+				Expect(os.RemoveAll(tmpDir)).To(Succeed())
 			})
 
 			It("should return nil when update check is disabled", func() {

@@ -157,5 +157,5 @@ func PrintUpdateMessage(result *CheckResult) {
 		return
 	}
 
-	os.Stderr.Write(buf.Bytes())
+	_, _ = os.Stderr.Write(buf.Bytes())
 }
