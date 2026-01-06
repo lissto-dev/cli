@@ -4,6 +4,7 @@ go 1.24.11
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
+	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/creativeprojects/go-selfupdate v1.5.2
 	github.com/lissto-dev/api v0.1.14-rc1
 	github.com/lissto-dev/controller v0.1.14-rc1
@@ -21,7 +22,6 @@ require (
 require (
 	code.gitea.io/sdk/gitea v0.22.1 // indirect
 	github.com/42wim/httpsig v1.2.3 // indirect
-	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/clipperhouse/displaywidth v0.6.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect

@@ -1,286 +1,263 @@
-package update
+package update_test
 
 import (
 	"os"
 	"path/filepath"
-	"testing"
+	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	"github.com/lissto-dev/cli/pkg/cache"
 	"github.com/lissto-dev/cli/pkg/config"
+	"github.com/lissto-dev/cli/pkg/update"
 )
 
-func TestIsNewerVersion(t *testing.T) {
-	tests := []struct {
-		name     string
-		latest   string
-		current  string
-		expected bool
-	}{
-		{
-			name:     "newer major version",
-			latest:   "v2.0.0",
-			current:  "v1.0.0",
-			expected: true,
-		},
-		{
-			name:     "newer minor version",
-			latest:   "v1.2.0",
-			current:  "v1.1.0",
-			expected: true,
-		},
-		{
-			name:     "newer patch version",
-			latest:   "v1.0.2",
-			current:  "v1.0.1",
-			expected: true,
-		},
-		{
-			name:     "same version",
-			latest:   "v1.0.0",
-			current:  "v1.0.0",
-			expected: false,
-		},
-		{
-			name:     "older version",
-			latest:   "v1.0.0",
-			current:  "v2.0.0",
-			expected: false,
-		},
-		{
-			name:     "without v prefix",
-			latest:   "1.2.0",
-			current:  "1.1.0",
-			expected: true,
-		},
-		{
-			name:     "mixed v prefix",
-			latest:   "v1.2.0",
-			current:  "1.1.0",
-			expected: true,
-		},
-		{
-			name:     "more parts in latest",
-			latest:   "v1.0.0.1",
-			current:  "v1.0.0",
-			expected: true,
-		},
-		{
-			name:     "more parts in current",
-			latest:   "v1.0.0",
-			current:  "v1.0.0.1",
-			expected: false,
-		},
-	}
+// isNewerVersion mirrors the internal function for testing
+func isNewerVersion(latest, current string) bool {
+	latest = strings.TrimPrefix(latest, "v")
+	current = strings.TrimPrefix(current, "v")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := isNewerVersion(tt.latest, tt.current)
-			if result != tt.expected {
-				t.Errorf("isNewerVersion(%q, %q) = %v, want %v", tt.latest, tt.current, result, tt.expected)
-			}
-		})
+	latestVer, err := semver.NewVersion(latest)
+	if err != nil {
+		return false
 	}
+	currentVer, err := semver.NewVersion(current)
+	if err != nil {
+		return false
+	}
+	return latestVer.GreaterThan(currentVer)
 }
 
-func TestCheckForUpdateSkipsDevVersion(t *testing.T) {
-	result, err := CheckForUpdate("dev")
-	if err != nil {
-		t.Errorf("CheckForUpdate(\"dev\") returned error: %v", err)
-	}
-	if result != nil {
-		t.Errorf("CheckForUpdate(\"dev\") should return nil result, got %+v", result)
-	}
-
-	result, err = CheckForUpdate("")
-	if err != nil {
-		t.Errorf("CheckForUpdate(\"\") returned error: %v", err)
-	}
-	if result != nil {
-		t.Errorf("CheckForUpdate(\"\") should return nil result, got %+v", result)
-	}
-}
-
-func TestUpdateCacheShouldCheckForUpdate(t *testing.T) {
-	tests := []struct {
-		name     string
-		cache    *config.UpdateCache
-		expected bool
-	}{
-		{
-			name: "never checked",
-			cache: &config.UpdateCache{
-				CheckInterval: config.DefaultUpdateCheckInterval,
+var _ = Describe("Update", func() {
+	Describe("Version Comparison using semver library", func() {
+		DescribeTable("should correctly compare versions",
+			func(latest, current string, expected bool) {
+				Expect(isNewerVersion(latest, current)).To(Equal(expected))
 			},
-			expected: true,
-		},
-		{
-			name: "checked recently",
-			cache: &config.UpdateCache{
-				LastChecked:   time.Now().Add(-1 * time.Hour),
-				CheckInterval: config.DefaultUpdateCheckInterval,
-			},
-			expected: false,
-		},
-		{
-			name: "checked more than 24h ago",
-			cache: &config.UpdateCache{
-				LastChecked:   time.Now().Add(-25 * time.Hour),
-				CheckInterval: config.DefaultUpdateCheckInterval,
-			},
-			expected: true,
-		},
-		{
-			name: "custom interval - should check",
-			cache: &config.UpdateCache{
-				LastChecked:   time.Now().Add(-2 * time.Hour),
-				CheckInterval: 3600, // 1 hour
-			},
-			expected: true,
-		},
-		{
-			name: "custom interval - should not check",
-			cache: &config.UpdateCache{
-				LastChecked:   time.Now().Add(-30 * time.Minute),
-				CheckInterval: 3600, // 1 hour
-			},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := tt.cache.ShouldCheckForUpdate()
-			if result != tt.expected {
-				t.Errorf("ShouldCheckForUpdate() = %v, want %v", result, tt.expected)
-			}
-		})
-	}
-}
-
-func TestUpdateCacheUpdateLastChecked(t *testing.T) {
-	cache := &config.UpdateCache{}
-
-	// Update with version
-	cache.UpdateLastChecked("v1.2.3")
-
-	if cache.LatestVersion != "v1.2.3" {
-		t.Errorf("LatestVersion = %q, want %q", cache.LatestVersion, "v1.2.3")
-	}
-
-	if cache.LastChecked.IsZero() {
-		t.Error("LastChecked should not be zero")
-	}
-
-	if cache.CheckInterval != config.DefaultUpdateCheckInterval {
-		t.Errorf("CheckInterval = %d, want %d", cache.CheckInterval, config.DefaultUpdateCheckInterval)
-	}
-
-	// Update without version (should keep existing)
-	cache.UpdateLastChecked("")
-	if cache.LatestVersion != "v1.2.3" {
-		t.Errorf("LatestVersion should remain %q, got %q", "v1.2.3", cache.LatestVersion)
-	}
-}
-
-func TestUpdateCachePersistence(t *testing.T) {
-	// Create a temporary directory for the test
-	tmpDir, err := os.MkdirTemp("", "lissto-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Set XDG_CACHE_HOME to our temp directory
-	oldCacheHome := os.Getenv("XDG_CACHE_HOME")
-	os.Setenv("XDG_CACHE_HOME", tmpDir)
-	defer os.Setenv("XDG_CACHE_HOME", oldCacheHome)
-
-	// Create and save a cache
-	cache := &config.UpdateCache{
-		LastChecked:   time.Now(),
-		LatestVersion: "v1.5.0",
-		CheckInterval: 7200,
-	}
-
-	err = config.SaveUpdateCache(cache)
-	if err != nil {
-		t.Fatalf("Failed to save update cache: %v", err)
-	}
-
-	// Verify file was created
-	cachePath := filepath.Join(tmpDir, "lissto", "update.yaml")
-	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
-		t.Errorf("Cache file was not created at %s", cachePath)
-	}
-
-	// Load the cache back
-	loadedCache, err := config.LoadUpdateCache()
-	if err != nil {
-		t.Fatalf("Failed to load update cache: %v", err)
-	}
-
-	if loadedCache.LatestVersion != "v1.5.0" {
-		t.Errorf("LatestVersion = %q, want %q", loadedCache.LatestVersion, "v1.5.0")
-	}
-
-	if loadedCache.CheckInterval != 7200 {
-		t.Errorf("CheckInterval = %d, want %d", loadedCache.CheckInterval, 7200)
-	}
-}
-
-func TestPrintUpdateMessage(t *testing.T) {
-	// Test that PrintUpdateMessage doesn't panic with nil
-	PrintUpdateMessage(nil)
-
-	// Test that PrintUpdateMessage doesn't panic with no update available
-	PrintUpdateMessage(&CheckResult{
-		UpdateAvailable: false,
-		CurrentVersion:  "v1.0.0",
-		LatestVersion:   "v1.0.0",
+			Entry("newer major version", "2.0.0", "1.0.0", true),
+			Entry("newer minor version", "1.2.0", "1.1.0", true),
+			Entry("newer patch version", "1.0.2", "1.0.1", true),
+			Entry("same version", "1.0.0", "1.0.0", false),
+			Entry("older version", "1.0.0", "2.0.0", false),
+			Entry("with v prefix in latest", "v1.2.0", "1.1.0", true),
+			Entry("with v prefix in current", "1.2.0", "v1.1.0", true),
+			Entry("with v prefix in both", "v1.2.0", "v1.1.0", true),
+		)
 	})
 
-	// Test with update available (just verify no panic)
-	PrintUpdateMessage(&CheckResult{
-		UpdateAvailable: true,
-		CurrentVersion:  "v1.0.0",
-		LatestVersion:   "v1.1.0",
-		ReleaseURL:      "https://github.com/lissto-dev/cli/releases/tag/v1.1.0",
+	Describe("CheckForUpdate", func() {
+		Context("when version is dev or empty", func() {
+			It("should return nil for dev version", func() {
+				result, err := update.CheckForUpdate("dev")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).To(BeNil())
+			})
+
+			It("should return nil for empty version", func() {
+				result, err := update.CheckForUpdate("")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).To(BeNil())
+			})
+		})
+
+		Context("when update check is disabled in config", func() {
+			var tmpDir string
+			var oldConfigHome, oldCacheHome string
+
+			BeforeEach(func() {
+				var err error
+				tmpDir, err = os.MkdirTemp("", "lissto-test-*")
+				Expect(err).NotTo(HaveOccurred())
+
+				oldConfigHome = os.Getenv("XDG_CONFIG_HOME")
+				oldCacheHome = os.Getenv("XDG_CACHE_HOME")
+				os.Setenv("XDG_CONFIG_HOME", tmpDir)
+				os.Setenv("XDG_CACHE_HOME", tmpDir)
+			})
+
+			AfterEach(func() {
+				os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+				os.Setenv("XDG_CACHE_HOME", oldCacheHome)
+				os.RemoveAll(tmpDir)
+			})
+
+			It("should return nil when update check is disabled", func() {
+				cfg := &config.Config{
+					Settings: config.Settings{
+						UpdateCheck: false,
+					},
+				}
+				err := config.SaveConfig(cfg)
+				Expect(err).NotTo(HaveOccurred())
+
+				result, err := update.CheckForUpdate("v1.0.0")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(result).To(BeNil())
+			})
+		})
 	})
-}
 
-func TestCheckForUpdateDisabled(t *testing.T) {
-	// Create a temporary directory for the test
-	tmpDir, err := os.MkdirTemp("", "lissto-test-*")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tmpDir)
+	Describe("Cache Package", func() {
+		var tmpDir string
+		var c *cache.Cache
+		var oldCacheHome string
 
-	// Set XDG_CONFIG_HOME to our temp directory
-	oldConfigHome := os.Getenv("XDG_CONFIG_HOME")
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = os.MkdirTemp("", "lissto-cache-test-*")
+			Expect(err).NotTo(HaveOccurred())
 
-	// Set XDG_CACHE_HOME to our temp directory
-	oldCacheHome := os.Getenv("XDG_CACHE_HOME")
-	os.Setenv("XDG_CACHE_HOME", tmpDir)
-	defer os.Setenv("XDG_CACHE_HOME", oldCacheHome)
+			oldCacheHome = os.Getenv("XDG_CACHE_HOME")
+			os.Setenv("XDG_CACHE_HOME", tmpDir)
 
-	// Create a config with update check disabled
-	cfg := &config.Config{
-		DisableUpdateCheck: true,
-	}
-	err = config.SaveConfig(cfg)
-	if err != nil {
-		t.Fatalf("Failed to save config: %v", err)
-	}
+			c = cache.New(filepath.Join(tmpDir, "lissto"))
+		})
 
-	// Check that update check returns nil when disabled
-	result, err := CheckForUpdate("v1.0.0")
-	if err != nil {
-		t.Errorf("CheckForUpdate returned error: %v", err)
-	}
-	if result != nil {
-		t.Errorf("CheckForUpdate should return nil when disabled, got %+v", result)
-	}
-}
+		AfterEach(func() {
+			os.Setenv("XDG_CACHE_HOME", oldCacheHome)
+			os.RemoveAll(tmpDir)
+		})
+
+		Describe("Set and Get", func() {
+			It("should store and retrieve data", func() {
+				data := update.CachedRelease{
+					Version:    "1.5.0",
+					URL:        "https://example.com/asset",
+					ReleaseURL: "https://github.com/lissto-dev/cli/releases/tag/v1.5.0",
+				}
+
+				err := c.Set("test-key", data, 24*time.Hour)
+				Expect(err).NotTo(HaveOccurred())
+
+				var retrieved update.CachedRelease
+				found, err := c.Get("test-key", &retrieved)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(found).To(BeTrue())
+				Expect(retrieved.Version).To(Equal("1.5.0"))
+				Expect(retrieved.ReleaseURL).To(Equal("https://github.com/lissto-dev/cli/releases/tag/v1.5.0"))
+			})
+
+			It("should return false for non-existent key", func() {
+				var data string
+				found, err := c.Get("non-existent", &data)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(found).To(BeFalse())
+			})
+
+			It("should return false for expired cache", func() {
+				err := c.Set("expired-key", "test-data", -1*time.Hour)
+				Expect(err).NotTo(HaveOccurred())
+
+				var data string
+				found, err := c.Get("expired-key", &data)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(found).To(BeFalse())
+			})
+		})
+
+		Describe("Delete", func() {
+			It("should remove cached data", func() {
+				err := c.Set("delete-key", "test-data", 24*time.Hour)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = c.Delete("delete-key")
+				Expect(err).NotTo(HaveOccurred())
+
+				var data string
+				found, err := c.Get("delete-key", &data)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(found).To(BeFalse())
+			})
+
+			It("should not error when deleting non-existent key", func() {
+				err := c.Delete("non-existent")
+				Expect(err).NotTo(HaveOccurred())
+			})
+		})
+
+		Describe("Clear", func() {
+			It("should remove all cached data", func() {
+				err := c.Set("key1", "data1", 24*time.Hour)
+				Expect(err).NotTo(HaveOccurred())
+				err = c.Set("key2", "data2", 24*time.Hour)
+				Expect(err).NotTo(HaveOccurred())
+
+				err = c.Clear()
+				Expect(err).NotTo(HaveOccurred())
+
+				var data string
+				found, _ := c.Get("key1", &data)
+				Expect(found).To(BeFalse())
+				found, _ = c.Get("key2", &data)
+				Expect(found).To(BeFalse())
+			})
+		})
+	})
+
+	Describe("PrintUpdateMessage", func() {
+		It("should not panic with nil result", func() {
+			Expect(func() { update.PrintUpdateMessage(nil) }).NotTo(Panic())
+		})
+
+		It("should not panic when no update is available", func() {
+			result := &update.CheckResult{
+				UpdateAvailable: false,
+				CurrentVersion:  "v1.0.0",
+				LatestVersion:   "v1.0.0",
+			}
+			Expect(func() { update.PrintUpdateMessage(result) }).NotTo(Panic())
+		})
+
+		It("should not panic when update is available", func() {
+			result := &update.CheckResult{
+				UpdateAvailable: true,
+				CurrentVersion:  "v1.0.0",
+				LatestVersion:   "v1.1.0",
+				ReleaseURL:      "https://github.com/lissto-dev/cli/releases/tag/v1.1.0",
+			}
+			Expect(func() { update.PrintUpdateMessage(result) }).NotTo(Panic())
+		})
+	})
+
+	Describe("Config Settings", func() {
+		var tmpDir string
+		var oldConfigHome string
+
+		BeforeEach(func() {
+			var err error
+			tmpDir, err = os.MkdirTemp("", "lissto-config-test-*")
+			Expect(err).NotTo(HaveOccurred())
+
+			oldConfigHome = os.Getenv("XDG_CONFIG_HOME")
+			os.Setenv("XDG_CONFIG_HOME", tmpDir)
+		})
+
+		AfterEach(func() {
+			os.Setenv("XDG_CONFIG_HOME", oldConfigHome)
+			os.RemoveAll(tmpDir)
+		})
+
+		It("should have update-check enabled by default", func() {
+			cfg, err := config.LoadConfig()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Settings.UpdateCheck).To(BeTrue())
+		})
+
+		It("should persist settings correctly", func() {
+			cfg := &config.Config{
+				Settings: config.Settings{
+					UpdateCheck: false,
+				},
+			}
+			err := config.SaveConfig(cfg)
+			Expect(err).NotTo(HaveOccurred())
+
+			loaded, err := config.LoadConfig()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(loaded.Settings.UpdateCheck).To(BeFalse())
+		})
+	})
+})

@@ -23,7 +23,7 @@ var configGetCmd = &cobra.Command{
 	Long: `Get a configuration value.
 
 Available keys:
-  disable-update-check  Whether automatic update checks are disabled`,
+  settings.update-check  Whether automatic update checks are enabled (true/false)`,
 	Args: cobra.ExactArgs(1),
 	RunE: runConfigGet,
 }
@@ -35,11 +35,11 @@ var configSetCmd = &cobra.Command{
 	Long: `Set a configuration value.
 
 Available keys:
-  disable-update-check  Set to 'true' to disable automatic update checks, 'false' to enable
+  settings.update-check  Set to 'true' to enable automatic update checks, 'false' to disable
 
 Examples:
-  lissto config set disable-update-check true
-  lissto config set disable-update-check false`,
+  lissto config set settings.update-check true
+  lissto config set settings.update-check false`,
 	Args: cobra.ExactArgs(2),
 	RunE: runConfigSet,
 }
@@ -67,8 +67,8 @@ func runConfigGet(cmd *cobra.Command, args []string) error {
 	}
 
 	switch key {
-	case "disable-update-check":
-		fmt.Printf("%v\n", cfg.DisableUpdateCheck)
+	case "settings.update-check":
+		fmt.Printf("%t\n", cfg.Settings.UpdateCheck)
 	default:
 		return fmt.Errorf("unknown configuration key: %s", key)
 	}
@@ -86,14 +86,14 @@ func runConfigSet(cmd *cobra.Command, args []string) error {
 	}
 
 	switch key {
-	case "disable-update-check":
+	case "settings.update-check":
 		switch value {
-		case "true", "1", "yes":
-			cfg.DisableUpdateCheck = true
-		case "false", "0", "no":
-			cfg.DisableUpdateCheck = false
+		case "true":
+			cfg.Settings.UpdateCheck = true
+		case "false":
+			cfg.Settings.UpdateCheck = false
 		default:
-			return fmt.Errorf("invalid value for disable-update-check: %s (use 'true' or 'false')", value)
+			return fmt.Errorf("invalid value for settings.update-check: %s (use 'true' or 'false')", value)
 		}
 	default:
 		return fmt.Errorf("unknown configuration key: %s", key)
@@ -113,20 +113,16 @@ func runConfigList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	configValues := map[string]interface{}{
-		"disable-update-check": cfg.DisableUpdateCheck,
-	}
-
 	if outputFormat == "json" {
-		return output.PrintJSON(os.Stdout, configValues)
+		return output.PrintJSON(os.Stdout, cfg.Settings)
 	} else if outputFormat == "yaml" {
-		return output.PrintYAML(os.Stdout, configValues)
+		return output.PrintYAML(os.Stdout, cfg.Settings)
 	}
 
 	// Table format
 	headers := []string{"KEY", "VALUE"}
 	rows := [][]string{
-		{"disable-update-check", fmt.Sprintf("%v", cfg.DisableUpdateCheck)},
+		{"settings.update-check", fmt.Sprintf("%t", cfg.Settings.UpdateCheck)},
 	}
 	output.PrintTable(os.Stdout, headers, rows)
 

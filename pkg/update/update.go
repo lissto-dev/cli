@@ -1,20 +1,36 @@
 package update
 
 import (
+	"bytes"
 	"context"
-	"fmt"
 	"os"
 	"strings"
+	"text/template"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	"github.com/creativeprojects/go-selfupdate"
+	"github.com/lissto-dev/cli/pkg/cache"
 	"github.com/lissto-dev/cli/pkg/config"
 )
 
 const (
 	// Repository is the GitHub repository for lissto CLI
 	Repository = "lissto-dev/cli"
+
+	// CacheKey is the cache key for update check results
+	CacheKey = "update"
+
+	// CacheTTL is the time-to-live for cached update check results
+	CacheTTL = 24 * time.Hour
 )
+
+// CachedRelease stores release information from go-selfupdate library
+type CachedRelease struct {
+	Version    string `yaml:"version"`
+	URL        string `yaml:"url"`
+	ReleaseURL string `yaml:"release-url"`
+}
 
 // CheckResult contains the result of an update check
 type CheckResult struct {
@@ -22,6 +38,23 @@ type CheckResult struct {
 	CurrentVersion  string
 	LatestVersion   string
 	ReleaseURL      string
+}
+
+// isNewerVersion compares two semver strings using the same library as go-selfupdate
+func isNewerVersion(latest, current string) bool {
+	// Normalize by removing 'v' prefix
+	latest = strings.TrimPrefix(latest, "v")
+	current = strings.TrimPrefix(current, "v")
+
+	latestVer, err := semver.NewVersion(latest)
+	if err != nil {
+		return false
+	}
+	currentVer, err := semver.NewVersion(current)
+	if err != nil {
+		return false
+	}
+	return latestVer.GreaterThan(currentVer)
 }
 
 // CheckForUpdate checks if a new version is available
@@ -32,33 +65,29 @@ func CheckForUpdate(currentVersion string) (*CheckResult, error) {
 		return nil, nil
 	}
 
-	// Check if update check is disabled in config
+	// Check if update check is enabled in config
 	cfg, err := config.LoadConfig()
-	if err == nil && cfg.DisableUpdateCheck {
+	if err == nil && !cfg.Settings.UpdateCheck {
 		return nil, nil
 	}
 
-	// Load update cache
-	cache, err := config.LoadUpdateCache()
+	// Get cache instance
+	c, err := cache.Default()
 	if err != nil {
-		// If we can't load cache, continue with check
-		cache = &config.UpdateCache{
-			CheckInterval: config.DefaultUpdateCheckInterval,
-		}
+		return nil, err
 	}
 
-	// Check if we should perform an update check
-	if !cache.ShouldCheckForUpdate() {
-		// Return cached result if we have one
-		if cache.LatestVersion != "" {
-			return &CheckResult{
-				UpdateAvailable: isNewerVersion(cache.LatestVersion, currentVersion),
-				CurrentVersion:  currentVersion,
-				LatestVersion:   cache.LatestVersion,
-				ReleaseURL:      fmt.Sprintf("https://github.com/%s/releases/tag/%s", Repository, cache.LatestVersion),
-			}, nil
-		}
-		return nil, nil
+	// Try to get cached release info
+	var cached CachedRelease
+	found, err := c.Get(CacheKey, &cached)
+	if err == nil && found && cached.Version != "" {
+		// Use cached data - compare using semver library
+		return &CheckResult{
+			UpdateAvailable: isNewerVersion(cached.Version, currentVersion),
+			CurrentVersion:  currentVersion,
+			LatestVersion:   cached.Version,
+			ReleaseURL:      cached.ReleaseURL,
+		}, nil
 	}
 
 	// Perform the update check using go-selfupdate
@@ -67,64 +96,41 @@ func CheckForUpdate(currentVersion string) (*CheckResult, error) {
 
 	latest, found, err := selfupdate.DetectLatest(ctx, selfupdate.ParseSlug(Repository))
 	if err != nil {
-		// Update cache timestamp even on failure to avoid hammering the API
-		cache.UpdateLastChecked("")
-		_ = config.SaveUpdateCache(cache)
+		// Cache empty result on failure to avoid hammering the API
+		_ = c.Set(CacheKey, CachedRelease{}, CacheTTL)
 		return nil, err
 	}
 
 	if !found {
-		cache.UpdateLastChecked("")
-		_ = config.SaveUpdateCache(cache)
+		_ = c.Set(CacheKey, CachedRelease{}, CacheTTL)
 		return nil, nil
 	}
 
-	latestVersion := latest.Version()
-	releaseURL := fmt.Sprintf("https://github.com/%s/releases/tag/v%s", Repository, latestVersion)
-	if latest.URL != "" {
-		releaseURL = latest.URL
+	// Cache the release info from library
+	cachedRelease := CachedRelease{
+		Version:    latest.Version(),
+		URL:        latest.AssetURL,
+		ReleaseURL: latest.URL,
 	}
-
-	// Update cache with new information
-	cache.UpdateLastChecked("v" + latestVersion)
-	_ = config.SaveUpdateCache(cache)
+	_ = c.Set(CacheKey, cachedRelease, CacheTTL)
 
 	return &CheckResult{
 		UpdateAvailable: latest.GreaterThan(currentVersion),
 		CurrentVersion:  currentVersion,
-		LatestVersion:   "v" + latestVersion,
-		ReleaseURL:      releaseURL,
+		LatestVersion:   latest.Version(),
+		ReleaseURL:      latest.URL,
 	}, nil
 }
 
-// isNewerVersion compares two version strings and returns true if latest is newer than current
-// Used for cached version comparison
-func isNewerVersion(latest, current string) bool {
-	// Normalize versions by removing 'v' prefix
-	latest = strings.TrimPrefix(latest, "v")
-	current = strings.TrimPrefix(current, "v")
-
-	// Split into parts
-	latestParts := strings.Split(latest, ".")
-	currentParts := strings.Split(current, ".")
-
-	// Compare each part
-	for i := 0; i < len(latestParts) && i < len(currentParts); i++ {
-		var latestNum, currentNum int
-		fmt.Sscanf(latestParts[i], "%d", &latestNum)
-		fmt.Sscanf(currentParts[i], "%d", &currentNum)
-
-		if latestNum > currentNum {
-			return true
-		}
-		if latestNum < currentNum {
-			return false
-		}
-	}
-
-	// If all compared parts are equal, the one with more parts is newer
-	return len(latestParts) > len(currentParts)
-}
+// Update message template
+const updateMessageTemplate = `
+╭─────────────────────────────────────────────────────────────╮
+│  A new version of lissto is available: {{printf "%-8s" .CurrentVersion}} → {{printf "%-8s" .LatestVersion}} │
+│                                                             │
+│  Homebrew:  brew upgrade lissto                             │
+│  Download:  {{printf "%-47s" (truncate .ReleaseURL 47)}} │
+╰─────────────────────────────────────────────────────────────╯
+`
 
 // PrintUpdateMessage prints an update notification to stderr if an update is available
 func PrintUpdateMessage(result *CheckResult) {
@@ -132,29 +138,24 @@ func PrintUpdateMessage(result *CheckResult) {
 		return
 	}
 
-	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "╭─────────────────────────────────────────────────────────────╮\n")
-	fmt.Fprintf(os.Stderr, "│  A new version of lissto is available: %-8s → %-8s │\n",
-		truncateVersion(result.CurrentVersion, 8),
-		truncateVersion(result.LatestVersion, 8))
-	fmt.Fprintf(os.Stderr, "│                                                             │\n")
-	fmt.Fprintf(os.Stderr, "│  Homebrew:  brew upgrade lissto                             │\n")
-	fmt.Fprintf(os.Stderr, "│  Download:  %-47s │\n", truncateURL(result.ReleaseURL, 47))
-	fmt.Fprintf(os.Stderr, "╰─────────────────────────────────────────────────────────────╯\n")
-}
-
-// truncateVersion truncates a version string to a max width
-func truncateVersion(v string, maxWidth int) string {
-	if len(v) > maxWidth {
-		return v[:maxWidth]
+	funcMap := template.FuncMap{
+		"truncate": func(s string, maxLen int) string {
+			if len(s) > maxLen {
+				return s[:maxLen-3] + "..."
+			}
+			return s
+		},
 	}
-	return v
-}
 
-// truncateURL truncates a URL string to a max width
-func truncateURL(url string, maxWidth int) string {
-	if len(url) > maxWidth {
-		return url[:maxWidth-3] + "..."
+	tmpl, err := template.New("update").Funcs(funcMap).Parse(updateMessageTemplate)
+	if err != nil {
+		return
 	}
-	return url
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, result); err != nil {
+		return
+	}
+
+	os.Stderr.Write(buf.Bytes())
 }

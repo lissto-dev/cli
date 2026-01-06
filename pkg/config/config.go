@@ -7,13 +7,25 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Settings represents CLI behavior settings
+type Settings struct {
+	UpdateCheck bool `yaml:"update-check"`
+}
+
+// DefaultSettings returns the default settings
+func DefaultSettings() Settings {
+	return Settings{
+		UpdateCheck: true, // enabled by default
+	}
+}
+
 // Config represents the CLI configuration
 type Config struct {
-	CurrentContext      string    `yaml:"current-context"`
-	Contexts            []Context `yaml:"contexts"`
-	CurrentEnv          string    `yaml:"current-env,omitempty"`
-	Kubeconfig          string    `yaml:"kubeconfig,omitempty"`
-	DisableUpdateCheck  bool      `yaml:"disable-update-check,omitempty"`
+	CurrentContext string    `yaml:"current-context"`
+	Contexts       []Context `yaml:"contexts"`
+	CurrentEnv     string    `yaml:"current-env,omitempty"`
+	Kubeconfig     string    `yaml:"kubeconfig,omitempty"`
+	Settings       Settings  `yaml:"settings"`
 }
 
 // Context represents an API connection context
@@ -37,15 +49,19 @@ func LoadConfig() (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Return empty config if file doesn't exist
+			// Return empty config with default settings if file doesn't exist
 			return &Config{
 				Contexts: []Context{},
+				Settings: DefaultSettings(),
 			}, nil
 		}
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	var config Config
+	// Start with default settings
+	config := Config{
+		Settings: DefaultSettings(),
+	}
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
