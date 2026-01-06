@@ -77,7 +77,7 @@ func inferRepositoryFromFile(composeFile string) (string, error) {
 }
 
 // blueprintWizardFlow orchestrates the complete blueprint creation wizard
-func blueprintWizardFlow(cmd *cobra.Command, apiClient *client.Client) (*client.BlueprintResponse, error) {
+func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.BlueprintResponse, error) {
 	// Step 1: Detect compose files in current directory (with warnings silenced)
 	currentDir, err := os.Getwd()
 	if err != nil {

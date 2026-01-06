@@ -52,6 +52,3 @@ func GetOrCreateDefaultEnv(apiClient *client.Client, envFlag string, nonInteract
 
 	return user.Name, nil
 }
-
-
-
