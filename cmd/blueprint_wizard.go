@@ -16,12 +16,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Environment variable names for overriding auto-detection
-const (
-	EnvRepository  = "LISSTO_REPOSITORY"
-	EnvComposeFile = "LISSTO_COMPOSE_FILE"
-)
-
 // findGitRepo searches upward from the given directory to find a .git directory
 func findGitRepo(startDir string) (string, error) {
 	absPath, err := filepath.Abs(startDir)
@@ -87,14 +81,17 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 	var selectedFile string
 	var repository string
 
-	// Check for LISSTO_COMPOSE_FILE env var override
-	if envComposeFile := os.Getenv(EnvComposeFile); envComposeFile != "" {
+	// Load environment variable overrides
+	overrides := cmdutil.LoadOverrides()
+
+	// Check for compose file override
+	if overrides.HasComposeFile() {
 		// Validate the file exists
-		if _, err := os.Stat(envComposeFile); err != nil {
-			return nil, fmt.Errorf("compose file from %s not found: %s", EnvComposeFile, envComposeFile)
+		if _, err := os.Stat(overrides.ComposeFile); err != nil {
+			return nil, fmt.Errorf("compose file from %s not found: %s", cmdutil.EnvOverrideComposeFile, overrides.ComposeFile)
 		}
-		selectedFile = envComposeFile
-		fmt.Printf("📄 Using compose file from %s: %s\n", EnvComposeFile, selectedFile)
+		selectedFile = overrides.ComposeFile
+		fmt.Printf("📄 Using compose file from %s: %s\n", cmdutil.EnvOverrideComposeFile, selectedFile)
 	} else {
 		// Step 1: Detect compose files in current directory (with warnings silenced)
 		currentDir, err := os.Getwd()
@@ -108,7 +105,7 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 		}
 
 		if len(composeFiles) == 0 {
-			return nil, fmt.Errorf("no valid compose files found in current directory.\nSuggestion: Use 'lissto blueprint create <file>' or set %s", EnvComposeFile)
+			return nil, fmt.Errorf("no valid compose files found in current directory.\nSuggestion: Use 'lissto blueprint create <file>' or set %s", cmdutil.EnvOverrideComposeFile)
 		}
 
 		// Step 2: Select compose file (auto or prompt)
@@ -118,22 +115,22 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 		}
 	}
 
-	// Check for LISSTO_REPOSITORY env var override
-	if envRepo := os.Getenv(EnvRepository); envRepo != "" {
-		repository = envRepo
-		fmt.Printf("📦 Using repository from %s: %s\n", EnvRepository, repository)
+	// Check for repository override
+	if overrides.HasRepository() {
+		repository = overrides.Repository
+		fmt.Printf("📦 Using repository from %s: %s\n", cmdutil.EnvOverrideRepository, repository)
 	} else {
 		// Step 3: Detect git repository
 		var err error
 		repository, err = inferRepositoryFromFile(selectedFile)
 		if err != nil {
-			return nil, fmt.Errorf("failed to detect git repository: %w\nSuggestion: Set %s to specify the repository", err, EnvRepository)
+			return nil, fmt.Errorf("failed to detect git repository: %w\nSuggestion: Set %s to specify the repository", err, cmdutil.EnvOverrideRepository)
 		}
 	}
 
 	// Step 4: Normalize repository URL
 	normalizedRepo := controllerconfig.NormalizeRepositoryURL(repository)
-	if os.Getenv(EnvRepository) == "" {
+	if !overrides.HasRepository() {
 		fmt.Printf("📦 Detected repository: %s\n", normalizedRepo)
 	}
 

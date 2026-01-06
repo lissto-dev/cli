@@ -8,11 +8,12 @@ import (
 	"github.com/spf13/cobra"
 
 	apicompose "github.com/lissto-dev/api/pkg/compose"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/lissto-dev/cli/pkg/output"
 )
 
 var verifyCmd = &cobra.Command{
-	Use:   "verify <compose-file>",
+	Use:   "verify [compose-file]",
 	Short: "Verify a Docker Compose file",
 	Long: `Validate a Docker Compose file and show detailed information.
 
@@ -22,6 +23,9 @@ This command checks:
 - Service definitions
 - Network and volume configurations
 - Environment variable references
+
+Environment variables:
+  LISSTO_COMPOSE_FILE  Override compose file path (used when no argument provided)
 
 Examples:
   # Verify a compose file
@@ -34,8 +38,11 @@ Examples:
   lissto verify compose.yaml --quiet
   
   # Verify with raw parser output (for debugging)
-  lissto verify compose.yaml --raw`,
-	Args: cobra.ExactArgs(1),
+  lissto verify compose.yaml --raw
+  
+  # Verify using environment variable
+  LISSTO_COMPOSE_FILE=docker-compose.yaml lissto verify`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: runVerify,
 }
 
@@ -46,7 +53,20 @@ func init() {
 }
 
 func runVerify(cmd *cobra.Command, args []string) error {
-	composePath := args[0]
+	// Load environment variable overrides
+	overrides := cmdutil.LoadOverrides()
+
+	// Determine compose file: argument > env var
+	var composePath string
+	if len(args) > 0 {
+		composePath = args[0]
+	} else if overrides.HasComposeFile() {
+		composePath = overrides.ComposeFile
+		fmt.Printf("📄 Using compose file from %s: %s\n", cmdutil.EnvOverrideComposeFile, composePath)
+	} else {
+		return fmt.Errorf("compose file required: provide as argument or set %s", cmdutil.EnvOverrideComposeFile)
+	}
+
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	raw, _ := cmd.Flags().GetBool("raw")
 

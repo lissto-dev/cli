@@ -12,12 +12,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Environment variable names for overriding auto-detection
-const (
-	EnvRepository  = "LISSTO_REPOSITORY"
-	EnvComposeFile = "LISSTO_COMPOSE_FILE"
-)
-
 var (
 	createBranch     string
 	createAuthor     string
@@ -110,15 +104,18 @@ func inferRepositoryFromFile(composeFile string) (string, error) {
 }
 
 func runCreate(_ *cobra.Command, args []string) error {
+	// Load environment variable overrides
+	overrides := cmdutil.LoadOverrides()
+
 	// Determine compose file: argument > env var
 	var composeFile string
 	if len(args) > 0 {
 		composeFile = args[0]
-	} else if envComposeFile := os.Getenv(EnvComposeFile); envComposeFile != "" {
-		composeFile = envComposeFile
-		fmt.Printf("📄 Using compose file from %s: %s\n", EnvComposeFile, composeFile)
+	} else if overrides.HasComposeFile() {
+		composeFile = overrides.ComposeFile
+		fmt.Printf("📄 Using compose file from %s: %s\n", cmdutil.EnvOverrideComposeFile, composeFile)
 	} else {
-		return fmt.Errorf("compose file required: provide as argument or set %s", EnvComposeFile)
+		return fmt.Errorf("compose file required: provide as argument or set %s", cmdutil.EnvOverrideComposeFile)
 	}
 
 	apiClient, err := cmdutil.GetAPIClient()
@@ -135,13 +132,13 @@ func runCreate(_ *cobra.Command, args []string) error {
 	// Determine repository: flag > env var > auto-detect
 	repository := createRepository
 	if repository == "" {
-		if envRepo := os.Getenv(EnvRepository); envRepo != "" {
-			repository = envRepo
-			fmt.Printf("📦 Using repository from %s: %s\n", EnvRepository, repository)
+		if overrides.HasRepository() {
+			repository = overrides.Repository
+			fmt.Printf("📦 Using repository from %s: %s\n", cmdutil.EnvOverrideRepository, repository)
 		} else {
 			inferredRepo, err := inferRepositoryFromFile(composeFile)
 			if err != nil {
-				return fmt.Errorf("failed to infer repository: %w\nPlease specify --repository or set %s", err, EnvRepository)
+				return fmt.Errorf("failed to infer repository: %w\nPlease specify --repository or set %s", err, cmdutil.EnvOverrideRepository)
 			}
 			repository = inferredRepo
 		}
