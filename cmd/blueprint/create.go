@@ -26,8 +26,12 @@ var createCmd = &cobra.Command{
 Optional flags:
   --branch          Branch name (for CI/CD workflows)
   --author          Author name (for CI/CD workflows)
-  --repository      Repository name/URL (overrides auto-detection)`,
-	Args:          cobra.ExactArgs(1),
+  --repository      Repository name/URL (overrides auto-detection)
+
+Environment variables:
+  LISSTO_REPOSITORY    Override repository auto-detection
+  LISSTO_COMPOSE_FILE  Override compose file path (used when no argument provided)`,
+	Args:          cobra.MaximumNArgs(1),
 	RunE:          runCreate,
 	SilenceUsage:  true, // Don't show usage on errors
 	SilenceErrors: false,
@@ -99,8 +103,20 @@ func inferRepositoryFromFile(composeFile string) (string, error) {
 	return remote, nil
 }
 
-func runCreate(cmd *cobra.Command, args []string) error {
-	composeFile := args[0]
+func runCreate(_ *cobra.Command, args []string) error {
+	// Load environment variable overrides
+	overrides := cmdutil.LoadOverrides()
+
+	// Determine compose file: argument > env var
+	var composeFile string
+	if len(args) > 0 {
+		composeFile = args[0]
+	} else if overrides.HasComposeFile() {
+		composeFile = overrides.ComposeFile
+		fmt.Printf("📄 Using compose file from %s: %s\n", cmdutil.EnvOverrideComposeFile, composeFile)
+	} else {
+		return fmt.Errorf("compose file required: provide as argument or set %s", cmdutil.EnvOverrideComposeFile)
+	}
 
 	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
@@ -113,14 +129,19 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to read docker-compose file: %w", err)
 	}
 
-	// Infer repository if not provided
+	// Determine repository: flag > env var > auto-detect
 	repository := createRepository
 	if repository == "" {
-		inferredRepo, err := inferRepositoryFromFile(composeFile)
-		if err != nil {
-			return fmt.Errorf("failed to infer repository: %w. Please specify --repository explicitly", err)
+		if overrides.HasRepository() {
+			repository = overrides.Repository
+			fmt.Printf("📦 Using repository from %s: %s\n", cmdutil.EnvOverrideRepository, repository)
+		} else {
+			inferredRepo, err := inferRepositoryFromFile(composeFile)
+			if err != nil {
+				return fmt.Errorf("failed to infer repository: %w\nPlease specify --repository or set %s", err, cmdutil.EnvOverrideRepository)
+			}
+			repository = inferredRepo
 		}
-		repository = inferredRepo
 	}
 
 	// Build request (scope determined by API based on repository)

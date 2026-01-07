@@ -82,3 +82,20 @@ func (c *Client) DeleteStack(name, env string) error {
 
 	return nil
 }
+
+// FindStacksByBlueprint finds all stacks using a specific blueprint ID in the given environment
+func (c *Client) FindStacksByBlueprint(blueprintID string, env string) ([]types.Stack, error) {
+	allStacks, err := c.ListStacks(env)
+	if err != nil {
+		return nil, err
+	}
+
+	var matching []types.Stack
+	for _, stack := range allStacks {
+		if stack.Spec.BlueprintReference == blueprintID {
+			matching = append(matching, stack)
+		}
+	}
+
+	return matching, nil
+}

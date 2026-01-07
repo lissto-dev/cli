@@ -8,6 +8,7 @@ import (
 	"github.com/lissto-dev/cli/pkg/config"
 	"github.com/lissto-dev/cli/pkg/interactive"
 	"github.com/lissto-dev/cli/pkg/output"
+	controllerconfig "github.com/lissto-dev/controller/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -20,9 +21,35 @@ var (
 	createNonInteractive bool
 )
 
-// createCmd represents the create command
+// createCmd represents the unified create command (parent)
 var createCmd = &cobra.Command{
 	Use:   "create",
+	Short: "Create blueprints or stacks (intelligent wizard)",
+	Long: `Create blueprints or stacks with an intelligent wizard.
+
+When run without subcommands, automatically detects your situation:
+- If no blueprints exist, starts blueprint creation wizard
+- If blueprints exist, shows unified selector to deploy or create new
+
+Subcommands:
+  stack      - Explicitly create a stack
+  blueprint  - Explicitly create a blueprint
+
+Examples:
+  # Intelligent wizard mode
+  lissto create
+
+  # Explicit stack creation
+  lissto create stack --blueprint my-blueprint
+
+  # Explicit blueprint creation
+  lissto create blueprint`,
+	RunE: runCreateRouter,
+}
+
+// createStackCmd represents the explicit stack creation subcommand
+var createStackCmd = &cobra.Command{
+	Use:   "stack",
 	Short: "Create a new stack (interactive)",
 	Long: `Create a new stack with an interactive workflow.
 
@@ -34,34 +61,152 @@ The create command guides you through:
 
 Examples:
   # Interactive mode - select blueprint and confirm deployment
-  lissto create
+  lissto create stack
 
   # Specify blueprint, interactive for the rest
-  lissto create --blueprint my-blueprint
+  lissto create stack --blueprint my-blueprint
 
   # Non-interactive with all parameters
-  lissto create --blueprint my-blueprint --env dev --branch main
+  lissto create stack --blueprint my-blueprint --env dev --branch main
 
   # Specify branch/tag/commit
-  lissto create --blueprint my-blueprint --branch develop
-  lissto create --blueprint my-blueprint --tag v1.2.3
-  lissto create --blueprint my-blueprint --commit abc123
+  lissto create stack --blueprint my-blueprint --branch develop
+  lissto create stack --blueprint my-blueprint --tag v1.2.3
+  lissto create stack --blueprint my-blueprint --commit abc123
 
   # Output in different formats
-  lissto create --blueprint my-blueprint --output json`,
-	RunE: runCreate,
+  lissto create stack --blueprint my-blueprint --output json`,
+	RunE: runCreateStack,
+}
+
+// createBlueprintCmd represents the explicit blueprint creation subcommand
+var createBlueprintCmd = &cobra.Command{
+	Use:   "blueprint",
+	Short: "Create a new blueprint (wizard)",
+	Long: `Create a new blueprint with an interactive wizard.
+
+The wizard will:
+1. Auto-detect compose files in current directory
+2. Detect git repository
+3. Check for existing blueprints from same repository
+4. Create or override blueprint safely
+
+Examples:
+  # Auto-detect compose file
+  lissto create blueprint
+
+  # The power-user command 'lissto blueprint create <file>' is still available`,
+	RunE: runCreateBlueprintWizard,
 }
 
 func init() {
-	createCmd.Flags().StringVar(&createBlueprint, "blueprint", "", "Blueprint to deploy")
-	createCmd.Flags().StringVar(&createBranch, "branch", "", "Git branch to use for image resolution")
-	createCmd.Flags().StringVar(&createTag, "tag", "", "Git tag to use for image resolution")
-	createCmd.Flags().StringVar(&createCommit, "commit", "", "Git commit hash to use for image resolution")
-	createCmd.Flags().StringVar(&createEnv, "env", "", "Environment to deploy to")
-	createCmd.Flags().BoolVar(&createNonInteractive, "non-interactive", false, "Run in non-interactive mode (fail if required info is missing)")
+	// Add subcommands
+	createCmd.AddCommand(createStackCmd)
+	createCmd.AddCommand(createBlueprintCmd)
+
+	// Move flags to stack subcommand
+	createStackCmd.Flags().StringVar(&createBlueprint, "blueprint", "", "Blueprint to deploy")
+	createStackCmd.Flags().StringVar(&createBranch, "branch", "", "Git branch to use for image resolution")
+	createStackCmd.Flags().StringVar(&createTag, "tag", "", "Git tag to use for image resolution")
+	createStackCmd.Flags().StringVar(&createCommit, "commit", "", "Git commit hash to use for image resolution")
+	createStackCmd.Flags().StringVar(&createEnv, "env", "", "Environment to deploy to")
+	createStackCmd.Flags().BoolVar(&createNonInteractive, "non-interactive", false, "Run in non-interactive mode (fail if required info is missing)")
 }
 
-func runCreate(cmd *cobra.Command, args []string) error {
+// runCreateRouter is the smart router for bare 'lissto create' command
+func runCreateRouter(cmd *cobra.Command, args []string) error {
+	// Load config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Get current context
+	ctx, err := cfg.GetCurrentContext()
+	if err != nil {
+		return fmt.Errorf("no active context. Run 'lissto login' first: %w", err)
+	}
+
+	// Create API client
+	fmt.Println("🔌 Connecting to Lissto API...")
+	apiClient, err := client.NewClientFromConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize API client: %w", err)
+	}
+
+	// List blueprints to determine routing
+	fmt.Println("🔍 Checking for existing blueprints...")
+	blueprints, err := apiClient.ListBlueprints(true)
+	if err != nil {
+		return fmt.Errorf("failed to list blueprints: %w", err)
+	}
+
+	// If no blueprints, start blueprint creation wizard
+	if len(blueprints) == 0 {
+		fmt.Println("✨ No blueprints found. Let's create your first blueprint!")
+		return runCreateBlueprintWizard(cmd, args)
+	}
+
+	// Blueprints exist - show unified selector
+	action, selectedBlueprint, err := interactive.SelectBlueprintOrCreate(blueprints)
+	if err != nil {
+		return fmt.Errorf("selection cancelled: %w", err)
+	}
+
+	if action == interactive.ActionCreateAdditional {
+		// User wants to create new blueprint
+		return runCreateBlueprintWizard(cmd, args)
+	}
+
+	// User selected a blueprint to deploy - set it and run stack creation
+	createBlueprint = selectedBlueprint.ID
+	return runCreateStack(cmd, args)
+}
+
+// runCreateBlueprintWizard handles the blueprint creation wizard flow
+func runCreateBlueprintWizard(cmd *cobra.Command, args []string) error {
+	// Load config
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// Get current context
+	ctx, err := cfg.GetCurrentContext()
+	if err != nil {
+		return fmt.Errorf("no active context. Run 'lissto login' first: %w", err)
+	}
+
+	// Create API client
+	apiClient, err := client.NewClientFromConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize API client: %w", err)
+	}
+
+	// Run the blueprint creation wizard
+	createdBlueprint, err := blueprintWizardFlow(cmd, apiClient)
+	if err != nil {
+		return err
+	}
+
+	// Step 11: Prompt "What would you like to do next?"
+	action, err := interactive.ConfirmNextAction()
+	if err != nil {
+		// User cancelled, that's okay - blueprint was created
+		return nil
+	}
+
+	if action == interactive.ActionDeployThisBlueprint && createdBlueprint != nil {
+		// Step 12: Set the blueprint and run stack deployment
+		createBlueprint = createdBlueprint.ID
+		fmt.Println()
+		return runCreateStack(cmd, args)
+	}
+
+	return nil
+}
+
+func runCreateStack(cmd *cobra.Command, args []string) error {
 	// Load config
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -160,6 +305,88 @@ blueprintLoop:
 			}
 		}
 
+		// Validation: Check for duplicate stacks
+		// Step 1: Check for exact blueprint match in current environment
+		existingStacks, err := apiClient.ListStacks(envToUse)
+		if err != nil {
+			return fmt.Errorf("failed to list existing stacks: %w", err)
+		}
+
+		// Check for exact blueprint ID match
+		for _, stack := range existingStacks {
+			if stack.Spec.BlueprintReference == selectedBlueprint.ID {
+				fmt.Printf("\n❌ Error: Stack with this blueprint already exists: %s\n", stack.Name)
+				fmt.Printf("💡 Tip: Use 'lissto update' to update the stack with new images\n\n")
+				return fmt.Errorf("stack '%s' already deployed with blueprint '%s'", stack.Name, selectedBlueprint.ID)
+			}
+		}
+
+		// Step 2: Check for same repository blueprint (if repository info available)
+		// Get detailed info to access repository annotation
+		selectedBlueprintDetailed, err := apiClient.GetBlueprintDetailed(selectedBlueprint.ID)
+		if err == nil && selectedBlueprintDetailed.Metadata.Annotations["lissto.dev/repository"] != "" && !createNonInteractive {
+			selectedRepo := selectedBlueprintDetailed.Metadata.Annotations["lissto.dev/repository"]
+			// Repository is already normalized in the annotation
+			normalizedSelectedRepo := selectedRepo
+
+			fmt.Printf("🔍 Checking for existing stacks from repository: %s\n", normalizedSelectedRepo)
+
+			// Check existing stacks for same repository
+			var matchingStacks []string
+			for _, stack := range existingStacks {
+				// Get blueprint details for each stack
+				stackBlueprintID := stack.Spec.BlueprintReference
+				if stackBlueprintID == selectedBlueprint.ID {
+					continue // Already checked for exact match above
+				}
+
+				// Get the blueprint detailed to check its repository
+				stackBlueprint, err := apiClient.GetBlueprintDetailed(stackBlueprintID)
+				if err != nil {
+					// Skip if we can't get blueprint details
+					fmt.Printf("  ⚠️  Warning: Could not fetch blueprint %s: %v\n", stackBlueprintID, err)
+					continue
+				}
+
+				// Extract repository from annotations
+				if repo, ok := stackBlueprint.Metadata.Annotations["lissto.dev/repository"]; ok && repo != "" {
+					normalizedStackRepo := controllerconfig.NormalizeRepositoryURL(repo)
+					fmt.Printf("  📦 Stack %s uses repository: %s\n", stack.Name, normalizedStackRepo)
+					if normalizedStackRepo == normalizedSelectedRepo {
+						matchingStacks = append(matchingStacks, stack.Name)
+					}
+				} else {
+					fmt.Printf("  ℹ️  Stack %s has no repository annotation (might be an old blueprint)\n", stack.Name)
+				}
+			}
+
+			// If we found matching repositories, warn the user
+			if len(matchingStacks) > 0 {
+				fmt.Printf("\n⚠️  Warning: Found existing stack(s) from the same repository:\n")
+				for _, stackName := range matchingStacks {
+					fmt.Printf("  - %s\n", stackName)
+				}
+				fmt.Println()
+
+				action, err := interactive.ConfirmDuplicateRepoAction()
+				if err != nil {
+					return fmt.Errorf("cancelled: %w", err)
+				}
+
+				switch action {
+				case interactive.ActionUpdateExisting:
+					// Suggest using lissto update command
+					fmt.Println("\n💡 Please run 'lissto update' to update the existing stack")
+					return fmt.Errorf("use 'lissto update' to update existing stacks")
+				case interactive.ActionDeployAnyway:
+					fmt.Println("\n⚠️  Proceeding with deployment (risky)...")
+					// Continue with create flow
+				case interactive.ActionCancel:
+					return fmt.Errorf("deployment cancelled by user")
+				}
+			}
+		}
+
 		// Step 3: Prepare and preview loop
 		var prepareResp *client.PrepareStackResponse
 		for {
@@ -194,7 +421,7 @@ blueprintLoop:
 				}
 
 				switch action {
-				case "Try another branch/tag":
+				case interactive.ActionTryAnotherBranchTag:
 					// Get new branch/tag/commit
 					branch, tag, commit, promptErr := interactive.PromptBranchTag()
 					if promptErr != nil {
