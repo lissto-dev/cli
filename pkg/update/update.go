@@ -123,13 +123,9 @@ func CheckForUpdate(currentVersion string) (*CheckResult, error) {
 }
 
 // Update message template
-const updateMessageTemplate = `
-╭─────────────────────────────────────────────────────────────╮
-│  A new version of lissto is available: {{printf "%-8s" .CurrentVersion}} → {{printf "%-8s" .LatestVersion}} │
-│                                                             │
-│  Homebrew:  brew upgrade lissto                             │
-│  Download:  {{printf "%-47s" (truncate .ReleaseURL 47)}} │
-╰─────────────────────────────────────────────────────────────╯
+const updateMessageTemplate = `-------
+New version found: {{.CurrentVersion}} → {{.LatestVersion}}. Run: brew upgrade lissto
+To disable update checks: lissto config set settings.update-check false
 `
 
 // PrintUpdateMessage prints an update notification to stderr if an update is available
@@ -138,16 +134,7 @@ func PrintUpdateMessage(result *CheckResult) {
 		return
 	}
 
-	funcMap := template.FuncMap{
-		"truncate": func(s string, maxLen int) string {
-			if len(s) > maxLen {
-				return s[:maxLen-3] + "..."
-			}
-			return s
-		},
-	}
-
-	tmpl, err := template.New("update").Funcs(funcMap).Parse(updateMessageTemplate)
+	tmpl, err := template.New("update").Parse(updateMessageTemplate)
 	if err != nil {
 		return
 	}
