@@ -10,6 +10,7 @@ import (
 	"github.com/lissto-dev/cli/cmd/secret"
 	"github.com/lissto-dev/cli/cmd/stack"
 	"github.com/lissto-dev/cli/cmd/variable"
+	"github.com/lissto-dev/cli/pkg/update"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +28,9 @@ var (
 	Date    = "unknown"
 )
 
+// updateCheckResult stores the result of the update check for display after command execution
+var updateCheckResult *update.CheckResult
+
 // rootCmd represents the base command
 var rootCmd = &cobra.Command{
 	Use:   "lissto",
@@ -34,6 +38,16 @@ var rootCmd = &cobra.Command{
 	Long: `Lissto CLI is a command-line tool for managing Lissto resources
 including blueprints, stacks, and environments.`,
 	SilenceUsage: true, // Don't show usage on errors
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// Check for updates in the background (respects 24h cache)
+		// Errors are silently ignored to not disrupt normal CLI usage
+		result, _ := update.CheckForUpdate(Version)
+		updateCheckResult = result
+	},
+	PersistentPostRun: func(cmd *cobra.Command, args []string) {
+		// Display update message after command execution
+		update.PrintUpdateMessage(updateCheckResult)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if showVersion {
 			fmt.Printf("lissto version %s\n", Version)
