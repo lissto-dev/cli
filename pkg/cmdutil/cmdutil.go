@@ -11,8 +11,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// GetAPIClient returns configured API client from current context
+// GetAPIClient returns configured API client from environment variables or current context.
+// Environment variables (LISSTO_API_KEY, LISSTO_API_URL) take precedence over config file.
+// This enables headless CI/CD usage (e.g., GitHub Actions) without requiring login.
 func GetAPIClient() (*client.Client, error) {
+	// Check for environment variable authentication first (CI/CD mode)
+	authOverrides := LoadAuthOverrides()
+	if authOverrides.IsConfigured() {
+		return client.NewClient(authOverrides.APIURL, authOverrides.APIKey), nil
+	}
+
+	// Fall back to config-based authentication
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load config: %w", err)
@@ -20,7 +29,7 @@ func GetAPIClient() (*client.Client, error) {
 
 	ctx, err := cfg.GetCurrentContext()
 	if err != nil {
-		return nil, fmt.Errorf("no context selected. Run 'lissto login' first")
+		return nil, fmt.Errorf("no context selected. Run 'lissto login' first, or set %s and %s environment variables", EnvAPIKey, EnvAPIURL)
 	}
 
 	apiClient, err := client.NewClientFromConfig(ctx)
@@ -30,8 +39,22 @@ func GetAPIClient() (*client.Client, error) {
 	return apiClient, nil
 }
 
-// GetAPIClientAndEnv returns API client and resolved environment name
+// GetAPIClientAndEnv returns API client and resolved environment name.
+// Environment variables (LISSTO_API_KEY, LISSTO_API_URL) take precedence over config file.
 func GetAPIClientAndEnv(cmd *cobra.Command) (*client.Client, string, error) {
+	// Get environment from flag first
+	envName, _ := cmd.Flags().GetString("env")
+
+	// Check for environment variable authentication first (CI/CD mode)
+	authOverrides := LoadAuthOverrides()
+	if authOverrides.IsConfigured() {
+		if envName == "" {
+			return nil, "", fmt.Errorf("--env flag is required when using environment variable authentication")
+		}
+		return client.NewClient(authOverrides.APIURL, authOverrides.APIKey), envName, nil
+	}
+
+	// Fall back to config-based authentication
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to load config: %w", err)
@@ -39,11 +62,10 @@ func GetAPIClientAndEnv(cmd *cobra.Command) (*client.Client, string, error) {
 
 	ctx, err := cfg.GetCurrentContext()
 	if err != nil {
-		return nil, "", fmt.Errorf("no context selected. Run 'lissto login' first")
+		return nil, "", fmt.Errorf("no context selected. Run 'lissto login' first, or set %s and %s environment variables", EnvAPIKey, EnvAPIURL)
 	}
 
-	// Get environment (from flag or config)
-	envName, _ := cmd.Flags().GetString("env")
+	// Get environment from config if not provided via flag
 	if envName == "" {
 		envName = cfg.CurrentEnv
 	}

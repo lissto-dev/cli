@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/lissto-dev/cli/pkg/client"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/lissto-dev/cli/pkg/config"
 	"github.com/lissto-dev/cli/pkg/interactive"
 	"github.com/lissto-dev/cli/pkg/output"
@@ -20,6 +21,20 @@ var (
 	createEnv            string
 	createNonInteractive bool
 )
+
+// StackCreateResult represents the JSON output for stack create command
+type StackCreateResult struct {
+	StackID     string         `json:"stack_id"`
+	BlueprintID string         `json:"blueprint_id"`
+	Environment string         `json:"environment"`
+	Exposed     []ExposedEntry `json:"exposed,omitempty"`
+}
+
+// ExposedEntry represents an exposed service URL
+type ExposedEntry struct {
+	Service string `json:"service"`
+	URL     string `json:"url"`
+}
 
 // createCmd represents the unified create command (parent)
 var createCmd = &cobra.Command{
@@ -207,22 +222,30 @@ func runCreateBlueprintWizard(cmd *cobra.Command, args []string) error {
 }
 
 func runCreateStack(cmd *cobra.Command, args []string) error {
-	// Load config
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
+	// Check for JSON output mode
+	isJSONOutput := outputFormat == "json" || outputFormat == "yaml"
 
-	// Get current context
-	ctx, err := cfg.GetCurrentContext()
-	if err != nil {
-		return fmt.Errorf("no active context. Run 'lissto login' first: %w", err)
-	}
+	// Check for environment variable authentication first (CI/CD mode)
+	var apiClient *client.Client
+	authOverrides := cmdutil.LoadAuthOverrides()
+	if authOverrides.IsConfigured() {
+		apiClient = client.NewClient(authOverrides.APIURL, authOverrides.APIKey)
+	} else {
+		// Fall back to config-based authentication
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
 
-	// Create API client with k8s discovery and validation
-	apiClient, err := client.NewClientFromConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize API client: %w", err)
+		ctx, err := cfg.GetCurrentContext()
+		if err != nil {
+			return fmt.Errorf("no active context. Run 'lissto login' first, or set %s and %s environment variables: %w", cmdutil.EnvAPIKey, cmdutil.EnvAPIURL, err)
+		}
+
+		apiClient, err = client.NewClientFromConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to initialize API client: %w", err)
+		}
 	}
 
 	// Track if blueprint was selected interactively (to show/hide Back button)
@@ -236,6 +259,11 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 	}
 
 	if envToUse == "" {
+		// In CI/CD mode with env vars, environment must be provided
+		if authOverrides.IsConfigured() {
+			return fmt.Errorf("--env flag is required when using environment variable authentication")
+		}
+
 		// Try to get existing envs
 		envs, err := apiClient.ListEnvs()
 		if err != nil {
@@ -246,7 +274,9 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 			if createNonInteractive {
 				// Use first env in non-interactive mode
 				envToUse = envs[0].Name
-				fmt.Printf("Using environment: %s\n", envToUse)
+				if !isJSONOutput {
+					fmt.Printf("Using environment: %s\n", envToUse)
+				}
 			} else {
 				// Interactive env selection
 				selectedEnv, err := interactive.SelectEnv(envs)
@@ -263,7 +293,9 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 			}
 
 			envToUse = user.Name
-			fmt.Printf("Creating default environment: %s\n", envToUse)
+			if !isJSONOutput {
+				fmt.Printf("Creating default environment: %s\n", envToUse)
+			}
 			_, err = apiClient.CreateEnv(envToUse)
 			if err != nil {
 				return fmt.Errorf("failed to create environment: %w", err)
@@ -277,7 +309,9 @@ blueprintLoop:
 	for {
 		if createBlueprint != "" {
 			// Blueprint provided via flag, skip selection
-			fmt.Printf("Using blueprint: %s\n", createBlueprint)
+			if !isJSONOutput {
+				fmt.Printf("Using blueprint: %s\n", createBlueprint)
+			}
 			bp, err := apiClient.GetBlueprint(createBlueprint)
 			if err != nil {
 				return fmt.Errorf("failed to get blueprint: %w", err)
@@ -549,20 +583,45 @@ blueprintLoop:
 		}
 
 		// Step 5: Create stack
-		fmt.Println("\nCreating stack...")
+		if !isJSONOutput {
+			fmt.Println("\nCreating stack...")
+		}
 		stackID, err := apiClient.CreateStack(selectedBlueprint.ID, envToUse, prepareResp.RequestID)
 		if err != nil {
 			return fmt.Errorf("failed to create stack: %w", err)
 		}
 
-		fmt.Printf("✅ Stack created successfully!\n")
-		fmt.Printf("Stack ID: %s\n", stackID)
+		// Prepare result for JSON output
+		result := StackCreateResult{
+			StackID:     stackID,
+			BlueprintID: selectedBlueprint.ID,
+			Environment: envToUse,
+		}
 
-		// Show exposed URLs if any
-		if len(prepareResp.Exposed) > 0 {
-			fmt.Println("\n🔗 Exposed services:")
-			for _, exp := range prepareResp.Exposed {
-				fmt.Printf("  - %s: https://%s\n", exp.Service, exp.URL)
+		// Add exposed URLs
+		for _, exp := range prepareResp.Exposed {
+			result.Exposed = append(result.Exposed, ExposedEntry{
+				Service: exp.Service,
+				URL:     "https://" + exp.URL,
+			})
+		}
+
+		// Output based on format
+		switch outputFormat {
+		case "json":
+			return output.PrintJSON(os.Stdout, result)
+		case "yaml":
+			return output.PrintYAML(os.Stdout, result)
+		default:
+			fmt.Printf("✅ Stack created successfully!\n")
+			fmt.Printf("Stack ID: %s\n", stackID)
+
+			// Show exposed URLs if any
+			if len(prepareResp.Exposed) > 0 {
+				fmt.Println("\n🔗 Exposed services:")
+				for _, exp := range prepareResp.Exposed {
+					fmt.Printf("  - %s: https://%s\n", exp.Service, exp.URL)
+				}
 			}
 		}
 

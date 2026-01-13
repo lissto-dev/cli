@@ -2,13 +2,16 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/lissto-dev/cli/pkg/client"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/lissto-dev/cli/pkg/config"
 	"github.com/lissto-dev/cli/pkg/interactive"
 	"github.com/lissto-dev/cli/pkg/k8s"
+	"github.com/lissto-dev/cli/pkg/output"
 	"github.com/lissto-dev/cli/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -21,6 +24,15 @@ var (
 	updateYes            bool
 	updateNonInteractive bool
 )
+
+// UpdateResult represents the JSON output for update command
+type UpdateResult struct {
+	StackID         string   `json:"stack_id"`
+	StackName       string   `json:"stack_name"`
+	Environment     string   `json:"environment"`
+	UpdatedServices []string `json:"updated_services"`
+	Status          string   `json:"status"` // "success" or "no-changes"
+}
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
@@ -61,32 +73,46 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	// Load config
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
+	// Check for JSON output mode
+	isJSONOutput := outputFormat == "json" || outputFormat == "yaml"
 
-	// Get current context
-	ctx, err := cfg.GetCurrentContext()
-	if err != nil {
-		return fmt.Errorf("no active context. Run 'lissto login' first: %w", err)
-	}
+	// Check for environment variable authentication first (CI/CD mode)
+	var apiClient *client.Client
+	var envToUse string
+	authOverrides := cmdutil.LoadAuthOverrides()
 
-	// Get environment from flag or config
-	envToUse := envName
-	if envToUse == "" {
-		envToUse = cfg.CurrentEnv
-	}
+	if authOverrides.IsConfigured() {
+		apiClient = client.NewClient(authOverrides.APIURL, authOverrides.APIKey)
+		envToUse = envName
+		if envToUse == "" {
+			return fmt.Errorf("--env flag is required when using environment variable authentication")
+		}
+	} else {
+		// Fall back to config-based authentication
+		cfg, err := config.LoadConfig()
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
 
-	if envToUse == "" {
-		return fmt.Errorf("no environment selected. Use --env flag or 'lissto env use <name>'")
-	}
+		ctx, err := cfg.GetCurrentContext()
+		if err != nil {
+			return fmt.Errorf("no active context. Run 'lissto login' first, or set %s and %s environment variables: %w", cmdutil.EnvAPIKey, cmdutil.EnvAPIURL, err)
+		}
 
-	// Create API client
-	apiClient, err := client.NewClientFromConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize API client: %w", err)
+		// Get environment from flag or config
+		envToUse = envName
+		if envToUse == "" {
+			envToUse = cfg.CurrentEnv
+		}
+
+		if envToUse == "" {
+			return fmt.Errorf("no environment selected. Use --env flag or 'lissto env use <name>'")
+		}
+
+		apiClient, err = client.NewClientFromConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to initialize API client: %w", err)
+		}
 	}
 
 	// Step 1: List stacks in current environment
@@ -305,6 +331,23 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Show preview based on whether there are changes
 	if !hasChanges {
+		// Output no-changes result for JSON format
+		if isJSONOutput {
+			result := UpdateResult{
+				StackID:         stackName,
+				StackName:       stackName,
+				Environment:     envToUse,
+				UpdatedServices: []string{},
+				Status:          "no-changes",
+			}
+			switch outputFormat {
+			case "json":
+				return output.PrintJSON(os.Stdout, result)
+			case "yaml":
+				return output.PrintYAML(os.Stdout, result)
+			}
+		}
+
 		fmt.Println("\nℹ️  No new images found")
 
 		if updateYes || updateNonInteractive {
@@ -398,7 +441,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 applyUpdate:
 	// Step 7: Build images map and update stack
-	fmt.Println("Applying update...")
+	if !isJSONOutput {
+		fmt.Println("Applying update...")
+	}
 	imagesMap := make(map[string]interface{})
 	for _, img := range prepareResp.Images {
 		imagesMap[img.Service] = map[string]interface{}{
@@ -411,14 +456,30 @@ applyUpdate:
 		return fmt.Errorf("failed to update stack: %w", err)
 	}
 
-	// Step 8: Success message
-	fmt.Printf("\n✅ Stack '%s' updated successfully\n", stackName)
+	// Prepare result for JSON output
+	result := UpdateResult{
+		StackID:         stackName,
+		StackName:       stackName,
+		Environment:     envToUse,
+		UpdatedServices: changedServices,
+		Status:          "success",
+	}
 
-	// Show updated services count
-	if len(changedServices) == 1 {
-		fmt.Printf("Updated 1 service: %s\n", changedServices[0])
-	} else {
-		fmt.Printf("Updated %d services\n", len(changedServices))
+	// Output based on format
+	switch outputFormat {
+	case "json":
+		return output.PrintJSON(os.Stdout, result)
+	case "yaml":
+		return output.PrintYAML(os.Stdout, result)
+	default:
+		fmt.Printf("\n✅ Stack '%s' updated successfully\n", stackName)
+
+		// Show updated services count
+		if len(changedServices) == 1 {
+			fmt.Printf("Updated 1 service: %s\n", changedServices[0])
+		} else {
+			fmt.Printf("Updated %d services\n", len(changedServices))
+		}
 	}
 
 	return nil
