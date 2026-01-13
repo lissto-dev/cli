@@ -1,0 +1,10 @@
+FROM alpine:3.19
+
+ARG TARGETARCH
+
+RUN apk add --no-cache ca-certificates bash curl
+
+COPY dist/linux-${TARGETARCH}/lissto /usr/local/bin/lissto
+RUN chmod +x /usr/local/bin/lissto
+
+ENTRYPOINT ["lissto"]
