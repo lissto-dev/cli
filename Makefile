@@ -7,6 +7,25 @@ GORELEASER_VERSION=2.13.0
 BUILD_DIR=bin
 BINARY=$(BUILD_DIR)/lissto
 
+# Build variables (can be overridden)
+VERSION ?= dev
+COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+BUILD_DATE ?= $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+
+# Linker flags for version injection
+LDFLAGS := -s -w \
+	-X github.com/lissto-dev/cli/cmd.Version=$(VERSION) \
+	-X github.com/lissto-dev/cli/cmd.Commit=$(COMMIT) \
+	-X github.com/lissto-dev/cli/cmd.Date=$(BUILD_DATE)
+
+# Docker variables
+DOCKER_IMAGE ?= lissto/cli
+PLATFORMS ?= linux/amd64,linux/arm64
+CACHE_FROM ?=
+CACHE_TO ?=
+
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
 GOBIN=$(shell go env GOPATH)/bin
@@ -66,13 +85,16 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 ##@ Build
 
 .PHONY: build
-build: fmt vet ## Build CLI binary.
+build: fmt vet build-binary ## Build CLI binary (with fmt and vet).
+
+.PHONY: build-binary
+build-binary: ## Build CLI binary (without fmt/vet, used by Docker).
 	@mkdir -p $(BUILD_DIR)
-	go build -o $(BINARY) .
+	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -ldflags="$(LDFLAGS)" -o $(BINARY) .
 
 .PHONY: install
 install: ## Install globally.
-	go install
+	go install -ldflags="$(LDFLAGS)"
 
 .PHONY: run
 run: fmt vet ## Run the CLI in development mode.
@@ -81,11 +103,33 @@ run: fmt vet ## Run the CLI in development mode.
 .PHONY: build-all
 build-all: fmt vet ## Build for multiple platforms.
 	@mkdir -p $(BUILD_DIR)
-	GOOS=darwin GOARCH=amd64 go build -o $(BUILD_DIR)/lissto-darwin-amd64 .
-	GOOS=darwin GOARCH=arm64 go build -o $(BUILD_DIR)/lissto-darwin-arm64 .
-	GOOS=linux GOARCH=amd64 go build -o $(BUILD_DIR)/lissto-linux-amd64 .
-	GOOS=linux GOARCH=arm64 go build -o $(BUILD_DIR)/lissto-linux-arm64 .
-	GOOS=windows GOARCH=amd64 go build -o $(BUILD_DIR)/lissto-windows-amd64.exe .
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/lissto-darwin-amd64 .
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/lissto-darwin-arm64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/lissto-linux-amd64 .
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/lissto-linux-arm64 .
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="$(LDFLAGS)" -o $(BUILD_DIR)/lissto-windows-amd64.exe .
+
+##@ Docker
+
+.PHONY: docker-build
+docker-build: ## Build Docker image for current platform.
+	docker build \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		-t $(DOCKER_IMAGE):$(VERSION) .
+
+.PHONY: docker-push
+docker-push: ## Build and push multi-arch Docker image.
+	docker buildx build \
+		--platform $(PLATFORMS) \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		$(if $(CACHE_FROM),--cache-from $(CACHE_FROM),) \
+		$(if $(CACHE_TO),--cache-to $(CACHE_TO),) \
+		-t $(DOCKER_IMAGE):$(VERSION) \
+		--push .
 
 ##@ Release
 

@@ -12,7 +12,7 @@ on:
       - 'v*'
 
 env:
-  IMAGE_NAME: lissto/cli
+  DOCKER_IMAGE: lissto/cli
 
 jobs:
   build-and-push:
@@ -60,33 +60,36 @@ jobs:
             echo "is_stable=false" >> $GITHUB_OUTPUT
             echo "version=main" >> $GITHUB_OUTPUT
           fi
-          echo "commit=${{ github.sha }}" >> $GITHUB_OUTPUT
-          echo "build_date=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile.multi
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ steps.meta.outputs.is_tag == 'true' && format('{0}:{1}', env.IMAGE_NAME, steps.meta.outputs.tag_name) || format('{0}:main', env.IMAGE_NAME) }}
-            ${{ steps.meta.outputs.is_stable == 'true' && format('{0}:latest', env.IMAGE_NAME) || '' }}
-          build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
-            COMMIT=${{ steps.meta.outputs.commit }}
-            BUILD_DATE=${{ steps.meta.outputs.build_date }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+        run: |
+          # Determine tags
+          TAGS="-t ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.is_tag == 'true' && steps.meta.outputs.tag_name || 'main' }}"
+          if [[ "${{ steps.meta.outputs.is_stable }}" == "true" ]]; then
+            TAGS="$TAGS -t ${{ env.DOCKER_IMAGE }}:latest"
+          fi
+
+          make docker-push \
+            VERSION=${{ steps.meta.outputs.version }} \
+            COMMIT=${{ github.sha }} \
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            CACHE_FROM=type=gha \
+            CACHE_TO=type=gha,mode=max \
+            DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.is_tag == 'true' && steps.meta.outputs.tag_name || 'main' }}
+
+      - name: Push latest tag (stable releases only)
+        if: steps.meta.outputs.is_stable == 'true'
+        run: |
+          make docker-push \
+            VERSION=${{ steps.meta.outputs.version }} \
+            COMMIT=${{ github.sha }} \
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            CACHE_FROM=type=gha \
+            DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}:latest
 
       - name: Show image info
         run: |
-          if [[ "${{ steps.meta.outputs.is_tag }}" == "true" ]]; then
-            echo "Published: ${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.tag_name }}"
-            if [[ "${{ steps.meta.outputs.is_stable }}" == "true" ]]; then
-              echo "Published: ${{ env.IMAGE_NAME }}:latest"
-            fi
-          else
-            echo "Published: ${{ env.IMAGE_NAME }}:main"
+          echo "Published: ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.is_tag == 'true' && steps.meta.outputs.tag_name || 'main' }}"
+          if [[ "${{ steps.meta.outputs.is_stable }}" == "true" ]]; then
+            echo "Published: ${{ env.DOCKER_IMAGE }}:latest"
           fi
