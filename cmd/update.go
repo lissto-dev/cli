@@ -6,7 +6,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/lissto-dev/cli/pkg/client"
-	"github.com/lissto-dev/cli/pkg/config"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/lissto-dev/cli/pkg/interactive"
 	"github.com/lissto-dev/cli/pkg/k8s"
 	"github.com/lissto-dev/cli/pkg/types"
@@ -21,6 +21,15 @@ var (
 	updateYes            bool
 	updateNonInteractive bool
 )
+
+// UpdateResult represents the JSON output for update command
+type UpdateResult struct {
+	StackID         string   `json:"stack_id"`
+	StackName       string   `json:"stack_name"`
+	Environment     string   `json:"environment"`
+	UpdatedServices []string `json:"updated_services"`
+	Status          string   `json:"status"` // "success" or "no-changes"
+}
 
 var updateCmd = &cobra.Command{
 	Use:   "update",
@@ -61,32 +70,13 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	// Load config
-	cfg, err := config.LoadConfig()
+	// Create output context for handling quiet mode (JSON/YAML output)
+	out := cmdutil.NewOutputContext(cmd)
+
+	// Get API client and environment using unified helper
+	apiClient, envToUse, err := cmdutil.GetAPIClientAndEnv(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// Get current context
-	ctx, err := cfg.GetCurrentContext()
-	if err != nil {
-		return fmt.Errorf("no active context. Run 'lissto login' first: %w", err)
-	}
-
-	// Get environment from flag or config
-	envToUse := envName
-	if envToUse == "" {
-		envToUse = cfg.CurrentEnv
-	}
-
-	if envToUse == "" {
-		return fmt.Errorf("no environment selected. Use --env flag or 'lissto env use <name>'")
-	}
-
-	// Create API client
-	apiClient, err := client.NewClientFromConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to initialize API client: %w", err)
+		return err
 	}
 
 	// Step 1: List stacks in current environment
@@ -305,6 +295,20 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Show preview based on whether there are changes
 	if !hasChanges {
+		// Output no-changes result
+		result := UpdateResult{
+			StackID:         stackName,
+			StackName:       stackName,
+			Environment:     envToUse,
+			UpdatedServices: []string{},
+			Status:          "no-changes",
+		}
+
+		// For JSON/YAML output, return immediately with the result
+		if out.IsQuiet() {
+			return out.PrintResult(result, nil)
+		}
+
 		fmt.Println("\nℹ️  No new images found")
 
 		if updateYes || updateNonInteractive {
@@ -398,7 +402,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 applyUpdate:
 	// Step 7: Build images map and update stack
-	fmt.Println("Applying update...")
+	out.Println("Applying update...")
 	imagesMap := make(map[string]interface{})
 	for _, img := range prepareResp.Images {
 		imagesMap[img.Service] = map[string]interface{}{
@@ -411,15 +415,24 @@ applyUpdate:
 		return fmt.Errorf("failed to update stack: %w", err)
 	}
 
-	// Step 8: Success message
-	fmt.Printf("\n✅ Stack '%s' updated successfully\n", stackName)
-
-	// Show updated services count
-	if len(changedServices) == 1 {
-		fmt.Printf("Updated 1 service: %s\n", changedServices[0])
-	} else {
-		fmt.Printf("Updated %d services\n", len(changedServices))
+	// Prepare result for structured output
+	result := UpdateResult{
+		StackID:         stackName,
+		StackName:       stackName,
+		Environment:     envToUse,
+		UpdatedServices: changedServices,
+		Status:          "success",
 	}
 
-	return nil
+	// Use unified output pattern: JSON/YAML for structured, custom for human-readable
+	return out.PrintResult(result, func() {
+		fmt.Printf("\n✅ Stack '%s' updated successfully\n", stackName)
+
+		// Show updated services count
+		if len(changedServices) == 1 {
+			fmt.Printf("Updated 1 service: %s\n", changedServices[0])
+		} else {
+			fmt.Printf("Updated %d services\n", len(changedServices))
+		}
+	})
 }

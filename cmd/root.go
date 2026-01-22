@@ -36,7 +36,19 @@ var rootCmd = &cobra.Command{
 	Use:   "lissto",
 	Short: "Lissto CLI - Manage your Lissto resources",
 	Long: `Lissto CLI is a command-line tool for managing Lissto resources
-including blueprints, stacks, and environments.`,
+including blueprints, stacks, and environments.
+
+Global Flags:
+  -o, --output      Output format (json, yaml, wide)
+      --context     Override current context
+      --env         Override current environment
+
+Environment Variables (CI/CD):
+  LISSTO_API_KEY    API key for headless CI/CD authentication
+  LISSTO_API_URL    API URL for headless CI/CD authentication
+
+When both LISSTO_API_KEY and LISSTO_API_URL are set, the CLI operates in
+CI/CD mode without requiring 'lissto login' or a kubeconfig.`,
 	SilenceUsage: true, // Don't show usage on errors
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Check for updates in the background (respects 24h cache)

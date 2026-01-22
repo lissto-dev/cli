@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/lissto-dev/cli/pkg/client"
+	"github.com/lissto-dev/cli/pkg/cmdutil"
 	"github.com/lissto-dev/cli/pkg/config"
 	"github.com/lissto-dev/cli/pkg/interactive"
 	"github.com/lissto-dev/cli/pkg/output"
@@ -20,6 +21,20 @@ var (
 	createEnv            string
 	createNonInteractive bool
 )
+
+// StackCreateResult represents the JSON output for stack create command
+type StackCreateResult struct {
+	StackID     string         `json:"stack_id"`
+	BlueprintID string         `json:"blueprint_id"`
+	Environment string         `json:"environment"`
+	Exposed     []ExposedEntry `json:"exposed,omitempty"`
+}
+
+// ExposedEntry represents an exposed service URL
+type ExposedEntry struct {
+	Service string `json:"service"`
+	URL     string `json:"url"`
+}
 
 // createCmd represents the unified create command (parent)
 var createCmd = &cobra.Command{
@@ -207,22 +222,16 @@ func runCreateBlueprintWizard(cmd *cobra.Command, args []string) error {
 }
 
 func runCreateStack(cmd *cobra.Command, args []string) error {
-	// Load config
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
-	}
+	// Create output context for handling quiet mode (JSON/YAML output)
+	out := cmdutil.NewOutputContext(cmd)
 
-	// Get current context
-	ctx, err := cfg.GetCurrentContext()
-	if err != nil {
-		return fmt.Errorf("no active context. Run 'lissto login' first: %w", err)
-	}
+	// Load all environment overrides once
+	overrides := cmdutil.LoadEnvOverrides()
 
-	// Create API client with k8s discovery and validation
-	apiClient, err := client.NewClientFromConfig(ctx)
+	// Get API client (handles env var auth and config-based auth)
+	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
-		return fmt.Errorf("failed to initialize API client: %w", err)
+		return err
 	}
 
 	// Track if blueprint was selected interactively (to show/hide Back button)
@@ -236,6 +245,11 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 	}
 
 	if envToUse == "" {
+		// In CI/CD mode with env vars, environment must be provided
+		if overrides.IsCICDMode() {
+			return fmt.Errorf("--env flag is required when using environment variable authentication")
+		}
+
 		// Try to get existing envs
 		envs, err := apiClient.ListEnvs()
 		if err != nil {
@@ -246,7 +260,7 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 			if createNonInteractive {
 				// Use first env in non-interactive mode
 				envToUse = envs[0].Name
-				fmt.Printf("Using environment: %s\n", envToUse)
+				out.Printf("Using environment: %s\n", envToUse)
 			} else {
 				// Interactive env selection
 				selectedEnv, err := interactive.SelectEnv(envs)
@@ -263,7 +277,7 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 			}
 
 			envToUse = user.Name
-			fmt.Printf("Creating default environment: %s\n", envToUse)
+			out.Printf("Creating default environment: %s\n", envToUse)
 			_, err = apiClient.CreateEnv(envToUse)
 			if err != nil {
 				return fmt.Errorf("failed to create environment: %w", err)
@@ -277,7 +291,7 @@ blueprintLoop:
 	for {
 		if createBlueprint != "" {
 			// Blueprint provided via flag, skip selection
-			fmt.Printf("Using blueprint: %s\n", createBlueprint)
+			out.Printf("Using blueprint: %s\n", createBlueprint)
 			bp, err := apiClient.GetBlueprint(createBlueprint)
 			if err != nil {
 				return fmt.Errorf("failed to get blueprint: %w", err)
@@ -549,21 +563,41 @@ blueprintLoop:
 		}
 
 		// Step 5: Create stack
-		fmt.Println("\nCreating stack...")
+		out.Println("\nCreating stack...")
 		stackID, err := apiClient.CreateStack(selectedBlueprint.ID, envToUse, prepareResp.RequestID)
 		if err != nil {
 			return fmt.Errorf("failed to create stack: %w", err)
 		}
 
-		fmt.Printf("✅ Stack created successfully!\n")
-		fmt.Printf("Stack ID: %s\n", stackID)
+		// Prepare result for structured output
+		result := StackCreateResult{
+			StackID:     stackID,
+			BlueprintID: selectedBlueprint.ID,
+			Environment: envToUse,
+		}
 
-		// Show exposed URLs if any
-		if len(prepareResp.Exposed) > 0 {
-			fmt.Println("\n🔗 Exposed services:")
-			for _, exp := range prepareResp.Exposed {
-				fmt.Printf("  - %s: https://%s\n", exp.Service, exp.URL)
+		// Add exposed URLs
+		for _, exp := range prepareResp.Exposed {
+			result.Exposed = append(result.Exposed, ExposedEntry{
+				Service: exp.Service,
+				URL:     "https://" + exp.URL,
+			})
+		}
+
+		// Use unified output pattern: JSON/YAML for structured, custom for human-readable
+		if err := out.PrintResult(result, func() {
+			fmt.Printf("✅ Stack created successfully!\n")
+			fmt.Printf("Stack ID: %s\n", stackID)
+
+			// Show exposed URLs if any
+			if len(prepareResp.Exposed) > 0 {
+				fmt.Println("\n🔗 Exposed services:")
+				for _, exp := range prepareResp.Exposed {
+					fmt.Printf("  - %s: https://%s\n", exp.Service, exp.URL)
+				}
 			}
+		}); err != nil {
+			return err
 		}
 
 		// Successfully created stack, break out of blueprint loop
