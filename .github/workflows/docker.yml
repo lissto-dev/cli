@@ -10,6 +10,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_suffix:
+        description: 'Custom tag suffix (e.g., sha-abc123 for testing)'
+        required: false
+        default: ''
 
 env:
   DOCKER_IMAGE: lissto/cli
@@ -19,6 +25,7 @@ jobs:
     name: Build and Push Docker Image
     runs-on: ubuntu-latest
     if: >
+      github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')) ||
       (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     permissions:
@@ -43,13 +50,20 @@ jobs:
       - name: Extract metadata
         id: meta
         run: |
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+          # Handle workflow_dispatch with custom tag
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.tag_suffix }}" ]]; then
+            echo "is_tag=false" >> $GITHUB_OUTPUT
+            echo "is_stable=false" >> $GITHUB_OUTPUT
+            echo "version=${{ inputs.tag_suffix }}" >> $GITHUB_OUTPUT
+            echo "docker_tag=${{ inputs.tag_suffix }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG_NAME=${GITHUB_REF#refs/tags/}
             # Remove 'v' prefix for version (v1.0.0 -> 1.0.0)
             VERSION=${TAG_NAME#v}
             echo "is_tag=true" >> $GITHUB_OUTPUT
             echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
             echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "docker_tag=$TAG_NAME" >> $GITHUB_OUTPUT
             if [[ "$TAG_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "is_stable=true" >> $GITHUB_OUTPUT
             else
@@ -59,23 +73,18 @@ jobs:
             echo "is_tag=false" >> $GITHUB_OUTPUT
             echo "is_stable=false" >> $GITHUB_OUTPUT
             echo "version=main" >> $GITHUB_OUTPUT
+            echo "docker_tag=main" >> $GITHUB_OUTPUT
           fi
 
       - name: Build and push Docker image
         run: |
-          # Determine tags
-          TAGS="-t ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.is_tag == 'true' && steps.meta.outputs.tag_name || 'main' }}"
-          if [[ "${{ steps.meta.outputs.is_stable }}" == "true" ]]; then
-            TAGS="$TAGS -t ${{ env.DOCKER_IMAGE }}:latest"
-          fi
-
           make docker-push \
             VERSION=${{ steps.meta.outputs.version }} \
             COMMIT=${{ github.sha }} \
             BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
             CACHE_FROM=type=gha \
             CACHE_TO=type=gha,mode=max \
-            DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.is_tag == 'true' && steps.meta.outputs.tag_name || 'main' }}
+            DOCKER_IMAGE=${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.docker_tag }}
 
       - name: Push latest tag (stable releases only)
         if: steps.meta.outputs.is_stable == 'true'
@@ -89,7 +98,7 @@ jobs:
 
       - name: Show image info
         run: |
-          echo "Published: ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.is_tag == 'true' && steps.meta.outputs.tag_name || 'main' }}"
+          echo "Published: ${{ env.DOCKER_IMAGE }}:${{ steps.meta.outputs.docker_tag }}"
           if [[ "${{ steps.meta.outputs.is_stable }}" == "true" ]]; then
             echo "Published: ${{ env.DOCKER_IMAGE }}:latest"
           fi

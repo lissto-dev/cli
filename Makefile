@@ -128,7 +128,7 @@ docker-push: ## Build and push multi-arch Docker image.
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		$(if $(CACHE_FROM),--cache-from $(CACHE_FROM),) \
 		$(if $(CACHE_TO),--cache-to $(CACHE_TO),) \
-		-t $(DOCKER_IMAGE):$(VERSION) \
+		-t $(DOCKER_IMAGE) \
 		--push .
 
 ##@ Release
