@@ -54,7 +54,7 @@ func init() {
 
 func runVerify(cmd *cobra.Command, args []string) error {
 	// Load environment variable overrides
-	overrides := cmdutil.LoadOverrides()
+	overrides := cmdutil.LoadEnvOverrides()
 
 	// Determine compose file: argument > env var
 	var composePath string

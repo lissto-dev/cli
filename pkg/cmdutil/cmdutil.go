@@ -16,9 +16,9 @@ import (
 // This enables headless CI/CD usage (e.g., GitHub Actions) without requiring login.
 func GetAPIClient() (*client.Client, error) {
 	// Check for environment variable authentication first (CI/CD mode)
-	authOverrides := LoadAuthOverrides()
-	if authOverrides.IsConfigured() {
-		return client.NewClient(authOverrides.APIURL, authOverrides.APIKey), nil
+	overrides := LoadEnvOverrides()
+	if overrides.IsCICDMode() {
+		return client.NewClient(overrides.APIURL, overrides.APIKey), nil
 	}
 
 	// Fall back to config-based authentication
@@ -46,12 +46,12 @@ func GetAPIClientAndEnv(cmd *cobra.Command) (*client.Client, string, error) {
 	envName, _ := cmd.Flags().GetString("env")
 
 	// Check for environment variable authentication first (CI/CD mode)
-	authOverrides := LoadAuthOverrides()
-	if authOverrides.IsConfigured() {
+	overrides := LoadEnvOverrides()
+	if overrides.IsCICDMode() {
 		if envName == "" {
 			return nil, "", fmt.Errorf("--env flag is required when using environment variable authentication")
 		}
-		return client.NewClient(authOverrides.APIURL, authOverrides.APIKey), envName, nil
+		return client.NewClient(overrides.APIURL, overrides.APIKey), envName, nil
 	}
 
 	// Fall back to config-based authentication

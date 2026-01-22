@@ -82,7 +82,7 @@ func blueprintWizardFlow(_ *cobra.Command, apiClient *client.Client) (*client.Bl
 	var repository string
 
 	// Load environment variable overrides
-	overrides := cmdutil.LoadOverrides()
+	overrides := cmdutil.LoadEnvOverrides()
 
 	// Check for compose file override
 	if overrides.HasComposeFile() {

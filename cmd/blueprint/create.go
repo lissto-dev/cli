@@ -35,13 +35,12 @@ Optional flags:
   --branch          Branch name (for CI/CD workflows)
   --author          Author name (for CI/CD workflows)
   --repository      Repository name/URL (overrides auto-detection)
-  -o, --output      Output format (json, yaml) - global flag
 
-Environment variables:
+Command-specific environment variables:
   LISSTO_REPOSITORY    Override repository auto-detection
   LISSTO_COMPOSE_FILE  Override compose file path (used when no argument provided)
-  LISSTO_API_KEY       API key for CI/CD authentication
-  LISSTO_API_URL       API URL for CI/CD authentication`,
+
+See 'lissto --help' for global flags and environment variables.`,
 	Args:          cobra.MaximumNArgs(1),
 	RunE:          runCreate,
 	SilenceUsage:  true, // Don't show usage on errors
@@ -119,7 +118,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	out := cmdutil.NewOutputContext(cmd)
 
 	// Load environment variable overrides
-	overrides := cmdutil.LoadOverrides()
+	overrides := cmdutil.LoadEnvOverrides()
 
 	// Determine compose file: argument > env var
 	var composeFile string

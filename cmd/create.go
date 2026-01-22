@@ -225,6 +225,9 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 	// Create output context for handling quiet mode (JSON/YAML output)
 	out := cmdutil.NewOutputContext(cmd)
 
+	// Load all environment overrides once
+	overrides := cmdutil.LoadEnvOverrides()
+
 	// Get API client (handles env var auth and config-based auth)
 	apiClient, err := cmdutil.GetAPIClient()
 	if err != nil {
@@ -233,10 +236,6 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 
 	// Track if blueprint was selected interactively (to show/hide Back button)
 	blueprintWasInteractive := createBlueprint == ""
-
-	// Check if using env var authentication (CI/CD mode)
-	authOverrides := cmdutil.LoadAuthOverrides()
-	isCICDMode := authOverrides.IsConfigured()
 
 	// Step 1: Determine environment (once, outside blueprint loop)
 	envToUse := createEnv
@@ -247,7 +246,7 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 
 	if envToUse == "" {
 		// In CI/CD mode with env vars, environment must be provided
-		if isCICDMode {
+		if overrides.IsCICDMode() {
 			return fmt.Errorf("--env flag is required when using environment variable authentication")
 		}
 
