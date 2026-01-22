@@ -2,16 +2,13 @@ package cmd
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/lissto-dev/cli/pkg/client"
 	"github.com/lissto-dev/cli/pkg/cmdutil"
-	"github.com/lissto-dev/cli/pkg/config"
 	"github.com/lissto-dev/cli/pkg/interactive"
 	"github.com/lissto-dev/cli/pkg/k8s"
-	"github.com/lissto-dev/cli/pkg/output"
 	"github.com/lissto-dev/cli/pkg/types"
 	"github.com/spf13/cobra"
 )
@@ -73,46 +70,13 @@ func init() {
 }
 
 func runUpdate(cmd *cobra.Command, args []string) error {
-	// Check for JSON output mode
-	isJSONOutput := outputFormat == "json" || outputFormat == "yaml"
+	// Create output context for handling quiet mode (JSON/YAML output)
+	out := cmdutil.NewOutputContext(cmd)
 
-	// Check for environment variable authentication first (CI/CD mode)
-	var apiClient *client.Client
-	var envToUse string
-	authOverrides := cmdutil.LoadAuthOverrides()
-
-	if authOverrides.IsConfigured() {
-		apiClient = client.NewClient(authOverrides.APIURL, authOverrides.APIKey)
-		envToUse = envName
-		if envToUse == "" {
-			return fmt.Errorf("--env flag is required when using environment variable authentication")
-		}
-	} else {
-		// Fall back to config-based authentication
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
-		}
-
-		ctx, err := cfg.GetCurrentContext()
-		if err != nil {
-			return fmt.Errorf("no active context. Run 'lissto login' first, or set %s and %s environment variables: %w", cmdutil.EnvAPIKey, cmdutil.EnvAPIURL, err)
-		}
-
-		// Get environment from flag or config
-		envToUse = envName
-		if envToUse == "" {
-			envToUse = cfg.CurrentEnv
-		}
-
-		if envToUse == "" {
-			return fmt.Errorf("no environment selected. Use --env flag or 'lissto env use <name>'")
-		}
-
-		apiClient, err = client.NewClientFromConfig(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to initialize API client: %w", err)
-		}
+	// Get API client and environment using unified helper
+	apiClient, envToUse, err := cmdutil.GetAPIClientAndEnv(cmd)
+	if err != nil {
+		return err
 	}
 
 	// Step 1: List stacks in current environment
@@ -331,21 +295,18 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// Show preview based on whether there are changes
 	if !hasChanges {
-		// Output no-changes result for JSON format
-		if isJSONOutput {
-			result := UpdateResult{
-				StackID:         stackName,
-				StackName:       stackName,
-				Environment:     envToUse,
-				UpdatedServices: []string{},
-				Status:          "no-changes",
-			}
-			switch outputFormat {
-			case "json":
-				return output.PrintJSON(os.Stdout, result)
-			case "yaml":
-				return output.PrintYAML(os.Stdout, result)
-			}
+		// Output no-changes result
+		result := UpdateResult{
+			StackID:         stackName,
+			StackName:       stackName,
+			Environment:     envToUse,
+			UpdatedServices: []string{},
+			Status:          "no-changes",
+		}
+
+		// For JSON/YAML output, return immediately with the result
+		if out.IsQuiet() {
+			return out.PrintResult(result, nil)
 		}
 
 		fmt.Println("\nℹ️  No new images found")
@@ -441,9 +402,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 applyUpdate:
 	// Step 7: Build images map and update stack
-	if !isJSONOutput {
-		fmt.Println("Applying update...")
-	}
+	out.Println("Applying update...")
 	imagesMap := make(map[string]interface{})
 	for _, img := range prepareResp.Images {
 		imagesMap[img.Service] = map[string]interface{}{
@@ -456,7 +415,7 @@ applyUpdate:
 		return fmt.Errorf("failed to update stack: %w", err)
 	}
 
-	// Prepare result for JSON output
+	// Prepare result for structured output
 	result := UpdateResult{
 		StackID:         stackName,
 		StackName:       stackName,
@@ -465,13 +424,8 @@ applyUpdate:
 		Status:          "success",
 	}
 
-	// Output based on format
-	switch outputFormat {
-	case "json":
-		return output.PrintJSON(os.Stdout, result)
-	case "yaml":
-		return output.PrintYAML(os.Stdout, result)
-	default:
+	// Use unified output pattern: JSON/YAML for structured, custom for human-readable
+	return out.PrintResult(result, func() {
 		fmt.Printf("\n✅ Stack '%s' updated successfully\n", stackName)
 
 		// Show updated services count
@@ -480,7 +434,5 @@ applyUpdate:
 		} else {
 			fmt.Printf("Updated %d services\n", len(changedServices))
 		}
-	}
-
-	return nil
+	})
 }

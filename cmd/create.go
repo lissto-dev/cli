@@ -222,34 +222,21 @@ func runCreateBlueprintWizard(cmd *cobra.Command, args []string) error {
 }
 
 func runCreateStack(cmd *cobra.Command, args []string) error {
-	// Check for JSON output mode
-	isJSONOutput := outputFormat == "json" || outputFormat == "yaml"
+	// Create output context for handling quiet mode (JSON/YAML output)
+	out := cmdutil.NewOutputContext(cmd)
 
-	// Check for environment variable authentication first (CI/CD mode)
-	var apiClient *client.Client
-	authOverrides := cmdutil.LoadAuthOverrides()
-	if authOverrides.IsConfigured() {
-		apiClient = client.NewClient(authOverrides.APIURL, authOverrides.APIKey)
-	} else {
-		// Fall back to config-based authentication
-		cfg, err := config.LoadConfig()
-		if err != nil {
-			return fmt.Errorf("failed to load config: %w", err)
-		}
-
-		ctx, err := cfg.GetCurrentContext()
-		if err != nil {
-			return fmt.Errorf("no active context. Run 'lissto login' first, or set %s and %s environment variables: %w", cmdutil.EnvAPIKey, cmdutil.EnvAPIURL, err)
-		}
-
-		apiClient, err = client.NewClientFromConfig(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to initialize API client: %w", err)
-		}
+	// Get API client (handles env var auth and config-based auth)
+	apiClient, err := cmdutil.GetAPIClient()
+	if err != nil {
+		return err
 	}
 
 	// Track if blueprint was selected interactively (to show/hide Back button)
 	blueprintWasInteractive := createBlueprint == ""
+
+	// Check if using env var authentication (CI/CD mode)
+	authOverrides := cmdutil.LoadAuthOverrides()
+	isCICDMode := authOverrides.IsConfigured()
 
 	// Step 1: Determine environment (once, outside blueprint loop)
 	envToUse := createEnv
@@ -260,7 +247,7 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 
 	if envToUse == "" {
 		// In CI/CD mode with env vars, environment must be provided
-		if authOverrides.IsConfigured() {
+		if isCICDMode {
 			return fmt.Errorf("--env flag is required when using environment variable authentication")
 		}
 
@@ -274,9 +261,7 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 			if createNonInteractive {
 				// Use first env in non-interactive mode
 				envToUse = envs[0].Name
-				if !isJSONOutput {
-					fmt.Printf("Using environment: %s\n", envToUse)
-				}
+				out.Printf("Using environment: %s\n", envToUse)
 			} else {
 				// Interactive env selection
 				selectedEnv, err := interactive.SelectEnv(envs)
@@ -293,9 +278,7 @@ func runCreateStack(cmd *cobra.Command, args []string) error {
 			}
 
 			envToUse = user.Name
-			if !isJSONOutput {
-				fmt.Printf("Creating default environment: %s\n", envToUse)
-			}
+			out.Printf("Creating default environment: %s\n", envToUse)
 			_, err = apiClient.CreateEnv(envToUse)
 			if err != nil {
 				return fmt.Errorf("failed to create environment: %w", err)
@@ -309,9 +292,7 @@ blueprintLoop:
 	for {
 		if createBlueprint != "" {
 			// Blueprint provided via flag, skip selection
-			if !isJSONOutput {
-				fmt.Printf("Using blueprint: %s\n", createBlueprint)
-			}
+			out.Printf("Using blueprint: %s\n", createBlueprint)
 			bp, err := apiClient.GetBlueprint(createBlueprint)
 			if err != nil {
 				return fmt.Errorf("failed to get blueprint: %w", err)
@@ -583,15 +564,13 @@ blueprintLoop:
 		}
 
 		// Step 5: Create stack
-		if !isJSONOutput {
-			fmt.Println("\nCreating stack...")
-		}
+		out.Println("\nCreating stack...")
 		stackID, err := apiClient.CreateStack(selectedBlueprint.ID, envToUse, prepareResp.RequestID)
 		if err != nil {
 			return fmt.Errorf("failed to create stack: %w", err)
 		}
 
-		// Prepare result for JSON output
+		// Prepare result for structured output
 		result := StackCreateResult{
 			StackID:     stackID,
 			BlueprintID: selectedBlueprint.ID,
@@ -606,13 +585,8 @@ blueprintLoop:
 			})
 		}
 
-		// Output based on format
-		switch outputFormat {
-		case "json":
-			return output.PrintJSON(os.Stdout, result)
-		case "yaml":
-			return output.PrintYAML(os.Stdout, result)
-		default:
+		// Use unified output pattern: JSON/YAML for structured, custom for human-readable
+		if err := out.PrintResult(result, func() {
 			fmt.Printf("✅ Stack created successfully!\n")
 			fmt.Printf("Stack ID: %s\n", stackID)
 
@@ -623,6 +597,8 @@ blueprintLoop:
 					fmt.Printf("  - %s: https://%s\n", exp.Service, exp.URL)
 				}
 			}
+		}); err != nil {
+			return err
 		}
 
 		// Successfully created stack, break out of blueprint loop

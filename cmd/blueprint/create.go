@@ -9,7 +9,6 @@ import (
 
 	"github.com/lissto-dev/cli/pkg/client"
 	"github.com/lissto-dev/cli/pkg/cmdutil"
-	"github.com/lissto-dev/cli/pkg/output"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +16,6 @@ var (
 	createBranch     string
 	createAuthor     string
 	createRepository string
-	createOutput     string
 )
 
 // BlueprintCreateResult represents the JSON output for blueprint create command
@@ -37,7 +35,7 @@ Optional flags:
   --branch          Branch name (for CI/CD workflows)
   --author          Author name (for CI/CD workflows)
   --repository      Repository name/URL (overrides auto-detection)
-  --output          Output format (json, yaml)
+  -o, --output      Output format (json, yaml) - global flag
 
 Environment variables:
   LISSTO_REPOSITORY    Override repository auto-detection
@@ -54,7 +52,6 @@ func init() {
 	createCmd.Flags().StringVar(&createBranch, "branch", "", "Branch name (for CI/CD workflows)")
 	createCmd.Flags().StringVar(&createAuthor, "author", "", "Author name (for CI/CD workflows)")
 	createCmd.Flags().StringVar(&createRepository, "repository", "", "Repository name/URL (used for blueprint title)")
-	createCmd.Flags().StringVarP(&createOutput, "output", "o", "", "Output format (json, yaml)")
 }
 
 // findGitRepo searches upward from the given directory to find a .git directory
@@ -117,10 +114,12 @@ func inferRepositoryFromFile(composeFile string) (string, error) {
 	return remote, nil
 }
 
-func runCreate(_ *cobra.Command, args []string) error {
+func runCreate(cmd *cobra.Command, args []string) error {
+	// Create output context for handling quiet mode (JSON/YAML output)
+	out := cmdutil.NewOutputContext(cmd)
+
 	// Load environment variable overrides
 	overrides := cmdutil.LoadOverrides()
-	isJSONOutput := createOutput == "json" || createOutput == "yaml"
 
 	// Determine compose file: argument > env var
 	var composeFile string
@@ -128,9 +127,7 @@ func runCreate(_ *cobra.Command, args []string) error {
 		composeFile = args[0]
 	} else if overrides.HasComposeFile() {
 		composeFile = overrides.ComposeFile
-		if !isJSONOutput {
-			fmt.Printf("📄 Using compose file from %s: %s\n", cmdutil.EnvOverrideComposeFile, composeFile)
-		}
+		out.Printf("📄 Using compose file from %s: %s\n", cmdutil.EnvOverrideComposeFile, composeFile)
 	} else {
 		return fmt.Errorf("compose file required: provide as argument or set %s", cmdutil.EnvOverrideComposeFile)
 	}
@@ -151,9 +148,7 @@ func runCreate(_ *cobra.Command, args []string) error {
 	if repository == "" {
 		if overrides.HasRepository() {
 			repository = overrides.Repository
-			if !isJSONOutput {
-				fmt.Printf("📦 Using repository from %s: %s\n", cmdutil.EnvOverrideRepository, repository)
-			}
+			out.Printf("📦 Using repository from %s: %s\n", cmdutil.EnvOverrideRepository, repository)
 		} else {
 			inferredRepo, err := inferRepositoryFromFile(composeFile)
 			if err != nil {
@@ -176,7 +171,7 @@ func runCreate(_ *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create blueprint: %w", err)
 	}
 
-	// Prepare result
+	// Prepare result for structured output
 	result := BlueprintCreateResult{
 		ID:         identifier,
 		Repository: repository,
@@ -184,15 +179,9 @@ func runCreate(_ *cobra.Command, args []string) error {
 		Author:     createAuthor,
 	}
 
-	// Output based on format
-	switch createOutput {
-	case "json":
-		return output.PrintJSON(os.Stdout, result)
-	case "yaml":
-		return output.PrintYAML(os.Stdout, result)
-	default:
+	// Use unified output pattern: JSON/YAML for structured, custom for human-readable
+	return out.PrintResult(result, func() {
 		fmt.Printf("Blueprint created successfully\n")
 		fmt.Printf("ID: %s\n", identifier)
-		return nil
-	}
+	})
 }
