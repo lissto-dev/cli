@@ -1,6 +1,6 @@
 module github.com/lissto-dev/cli
 
-go 1.24.11
+go 1.25.6
 
 require (
 	github.com/AlecAivazis/survey/v2 v2.3.7
